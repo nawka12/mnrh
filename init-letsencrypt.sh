@@ -22,10 +22,6 @@ sudo docker-compose up -d --build app
 echo "### Waiting for app service to start..."
 sleep 10
 
-# Test if nginx is responding
-echo "### Testing nginx connection..."
-curl -I http://localhost/.well-known/acme-challenge/test
-
 echo "### Requesting Let's Encrypt certificate..."
 sudo docker-compose run --rm certbot \
   certonly \
@@ -39,11 +35,14 @@ sudo docker-compose run --rm certbot \
   --cert-name moonaroh.com \
   -v
 
-# If certificate was obtained successfully, update nginx config
+# If certificate was obtained successfully, create SSL config
 if [ -f "certbot/conf/live/moonaroh.com/fullchain.pem" ]; then
-    echo "### Updating nginx configuration..."
-    sudo sed -i 's|ssl_certificate .*|ssl_certificate /etc/letsencrypt/live/moonaroh.com/fullchain.pem;|' nginx.conf
-    sudo sed -i 's|ssl_certificate_key .*|ssl_certificate_key /etc/letsencrypt/live/moonaroh.com/privkey.pem;|' nginx.conf
+    echo "### Creating SSL configuration..."
+    echo "ssl_certificate /etc/letsencrypt/live/moonaroh.com/fullchain.pem;" > ssl.conf
+    echo "ssl_certificate_key /etc/letsencrypt/live/moonaroh.com/privkey.pem;" >> ssl.conf
+    
+    # Copy SSL config to nginx
+    sudo docker cp ssl.conf vite-app:/etc/nginx/conf.d/
     
     echo "### Reloading nginx..."
     sudo docker-compose exec app nginx -s reload
