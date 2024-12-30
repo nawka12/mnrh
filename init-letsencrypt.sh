@@ -2,7 +2,7 @@
 
 domains=(moonaroh.com)
 email="kayfa.haluk.y@gmail.com"
-staging=1
+staging=0
 
 # Make sure certbot directory exists
 echo "### Cleaning up old certificates..."
@@ -36,9 +36,6 @@ sudo docker-compose run --rm certbot \
   -d moonaroh.com \
   --agree-tos \
   --no-eff-email \
-  --staging \
-  --debug \
-  --break-my-certs \
   --force-renewal \
   --cert-name moonaroh.com
 
