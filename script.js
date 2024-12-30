@@ -515,7 +515,10 @@ async function checkLiveStatus() {
             // Add tweets section after recent videos
             if (tweets.length > 0) {
                 html += `
-                    <h2 class="text-xl md:text-2xl font-bold text-gray-700 my-6">Recent Tweets</h2>
+                    <div class="flex items-center justify-between my-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-gray-700">Recent Tweets</h2>
+                        <span class="text-xs text-gray-500 italic">Powered by Nitter (Nitter is dying so this may not work as expected)</span>
+                    </div>
                     <div class="grid-container">
                 `;
                 for (const tweet of tweets) {
