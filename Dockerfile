@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies with specific flags
-RUN npm install --production --no-audit --no-optional
+RUN npm install
 
 # Copy rest of the files
 COPY . .
