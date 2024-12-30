@@ -23,8 +23,8 @@ openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
   -out "$data_path/conf/live/$domains/fullchain.pem" \
   -subj "/CN=localhost"
 
-echo "### Starting nginx..."
-docker-compose up --force-recreate -d nginx
+echo "### Starting app service..."
+docker-compose up --force-recreate -d app
 
 echo "### Requesting Let's Encrypt certificate..."
 docker-compose run --rm --entrypoint "\
@@ -36,5 +36,5 @@ docker-compose run --rm --entrypoint "\
     --agree-tos \
     --force-renewal" certbot
 
-echo "### Reloading nginx..."
-docker-compose exec nginx nginx -s reload 
+echo "### Reloading app service..."
+docker-compose exec app nginx -s reload 
