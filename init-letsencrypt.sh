@@ -1,8 +1,8 @@
 #!/bin/bash
 
 domains=(moonaroh.com www.moonaroh.com)
-email="your-email@example.com" # Change this to your email
-staging=0 # Set to 1 if you're testing your setup
+email="kayfa.haluk.y@gmail.com" # Change this to your email
+staging=1 # Set to 1 if you're testing your setup
 
 data_path="./certbot"
 rsa_key_size=4096
@@ -34,15 +34,17 @@ echo "### Waiting for app service to start..."
 sleep 10
 
 echo "### Requesting Let's Encrypt certificate..."
-sudo docker-compose run --rm certbot certonly \
+sudo docker-compose run --rm certbot \
+    certonly \
     --webroot \
-    -w /var/www/certbot \
+    --webroot-path=/var/www/certbot \
     --email $email \
-    ${staging:+--staging} \
-    ${domains[@]/#/-d } \
+    --domains moonaroh.com,www.moonaroh.com \
     --rsa-key-size $rsa_key_size \
     --agree-tos \
-    --force-renewal
+    --force-renewal \
+    --non-interactive \
+    ${staging:+--staging}
 
 echo "### Restarting app service..."
 sudo docker-compose restart app 
