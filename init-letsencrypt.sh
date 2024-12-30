@@ -1,8 +1,8 @@
 #!/bin/bash
 
 domains=(moonaroh.com www.moonaroh.com)
-email="kayfa.haluk.y@gmail.com" # Change this to your email
-staging=1 # Set to 1 if you're testing your setup
+email="kayfa.haluk.y@gmail.com" # Using your actual email
+staging=1 # Set to 1 for testing
 
 data_path="./certbot"
 rsa_key_size=4096
@@ -38,15 +38,15 @@ sudo docker-compose run --rm certbot \
     certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
+    -v \
     --email $email \
     -d moonaroh.com \
     -d www.moonaroh.com \
     --rsa-key-size $rsa_key_size \
     --agree-tos \
     --no-eff-email \
-    --force-renewal \
-    --non-interactive \
-    ${staging:+--staging}
+    --staging \
+    --force-renewal
 
 echo "### Restarting app service..."
 sudo docker-compose restart app 
