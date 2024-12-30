@@ -34,14 +34,15 @@ echo "### Waiting for app service to start..."
 sleep 10
 
 echo "### Requesting Let's Encrypt certificate..."
-sudo docker-compose run --rm --entrypoint "\
-  certbot certonly --webroot -w /var/www/certbot \
+sudo docker-compose run --rm certbot certonly \
+    --webroot \
+    -w /var/www/certbot \
     --email $email \
     ${staging:+--staging} \
     ${domains[@]/#/-d } \
     --rsa-key-size $rsa_key_size \
     --agree-tos \
-    --force-renewal" certbot
+    --force-renewal
 
 echo "### Restarting app service..."
 sudo docker-compose restart app 
