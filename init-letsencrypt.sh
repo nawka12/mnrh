@@ -5,6 +5,12 @@ email="kayfa.haluk.y@gmail.com"
 staging=1
 
 # Make sure certbot directory exists
+echo "### Cleaning up old certificates..."
+sudo rm -rf certbot/conf/live/moonaroh.com
+sudo rm -rf certbot/conf/archive/moonaroh.com
+sudo rm -rf certbot/conf/renewal/moonaroh.com.conf
+
+echo "### Creating directories..."
 mkdir -p certbot/conf
 mkdir -p certbot/www
 
@@ -33,7 +39,8 @@ sudo docker-compose run --rm certbot \
   --staging \
   --debug \
   --break-my-certs \
-  --force-renewal
+  --force-renewal \
+  --cert-name moonaroh.com
 
 # Reload nginx
 echo "### Reloading nginx configuration..."
