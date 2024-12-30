@@ -1,6 +1,6 @@
 #!/bin/bash
 
-domains=(moonaroh.com www.moonaroh.com)
+domains=(moonaroh.com)
 email="kayfa.haluk.y@gmail.com"
 staging=1
 
@@ -27,7 +27,7 @@ sudo docker-compose run --rm certbot \
   --webroot \
   --webroot-path /var/www/certbot \
   --email $email \
-  -d moonaroh.com -d www.moonaroh.com \
+  -d moonaroh.com \
   --agree-tos \
   --no-eff-email \
   --staging \
