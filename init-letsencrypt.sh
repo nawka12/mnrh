@@ -24,10 +24,10 @@ openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
   -subj "/CN=localhost"
 
 echo "### Starting app service..."
-docker-compose up --force-recreate -d app
+sudo docker-compose up --force-recreate -d app
 
 echo "### Requesting Let's Encrypt certificate..."
-docker-compose run --rm --entrypoint "\
+sudo docker-compose run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
     --email $email \
     ${staging:+--staging} \
@@ -37,4 +37,4 @@ docker-compose run --rm --entrypoint "\
     --force-renewal" certbot
 
 echo "### Reloading app service..."
-docker-compose exec app nginx -s reload 
+sudo docker-compose exec app nginx -s reload 
