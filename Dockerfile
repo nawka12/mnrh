@@ -1,9 +1,17 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json .
-RUN npm install
+
+# Copy package files first
+COPY package*.json ./
+
+# Install dependencies with specific flags
+RUN npm install --production --no-audit --no-optional
+
+# Copy rest of the files
 COPY . .
-RUN npm run build
+
+# Build with specific memory allocation
+RUN NODE_OPTIONS="--max-old-space-size=512" npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
