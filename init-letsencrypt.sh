@@ -39,9 +39,11 @@ sudo docker-compose run --rm certbot \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email $email \
-    --domains moonaroh.com,www.moonaroh.com \
+    -d moonaroh.com \
+    -d www.moonaroh.com \
     --rsa-key-size $rsa_key_size \
     --agree-tos \
+    --no-eff-email \
     --force-renewal \
     --non-interactive \
     ${staging:+--staging}
