@@ -4,16 +4,10 @@ services:
     build: .
     container_name: vite-app
     restart: always
+    mem_limit: 1g
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    command: certonly --webroot --webroot-path=/var/www/certbot --email diarysantri@gmail.com --agree-tos --no-eff-email -d moonaroh.com -d www.moonaroh.com
