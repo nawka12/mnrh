@@ -4,7 +4,6 @@ domains=(moonaroh.com)
 email="kayfa.haluk.y@gmail.com"
 staging=0
 
-# Make sure certbot directory exists
 echo "### Cleaning up old certificates..."
 sudo rm -rf certbot/conf/live/moonaroh.com
 sudo rm -rf certbot/conf/archive/moonaroh.com
@@ -14,19 +13,19 @@ echo "### Creating directories..."
 mkdir -p certbot/conf
 mkdir -p certbot/www
 
-# Stop any existing containers
 echo "### Stopping existing containers..."
 sudo docker-compose down
 
-# Start nginx
-echo "### Starting nginx..."
-sudo docker-compose up -d app
+echo "### Building and starting app service..."
+sudo docker-compose up -d --build app
 
-# Wait for nginx to start
-echo "### Waiting for nginx to start..."
-sleep 5
+echo "### Waiting for app service to start..."
+sleep 10
 
-# Request the certificate
+# Test if nginx is responding
+echo "### Testing nginx connection..."
+curl -I http://localhost/.well-known/acme-challenge/test
+
 echo "### Requesting Let's Encrypt certificate..."
 sudo docker-compose run --rm certbot \
   certonly \
@@ -37,8 +36,17 @@ sudo docker-compose run --rm certbot \
   --agree-tos \
   --no-eff-email \
   --force-renewal \
-  --cert-name moonaroh.com
+  --cert-name moonaroh.com \
+  -v
 
-# Reload nginx
-echo "### Reloading nginx configuration..."
-sudo docker-compose exec app nginx -s reload 
+# If certificate was obtained successfully, update nginx config
+if [ -f "certbot/conf/live/moonaroh.com/fullchain.pem" ]; then
+    echo "### Updating nginx configuration..."
+    sudo sed -i 's|ssl_certificate .*|ssl_certificate /etc/letsencrypt/live/moonaroh.com/fullchain.pem;|' nginx.conf
+    sudo sed -i 's|ssl_certificate_key .*|ssl_certificate_key /etc/letsencrypt/live/moonaroh.com/privkey.pem;|' nginx.conf
+    
+    echo "### Reloading nginx..."
+    sudo docker-compose exec app nginx -s reload
+else
+    echo "### Certificate not obtained. Check the logs above for errors."
+fi 
