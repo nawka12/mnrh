@@ -14,17 +14,24 @@ if [ -d "$data_path" ]; then
   fi
 fi
 
-mkdir -p "$data_path/conf/live/$domains"
+# Create required directories
+mkdir -p "$data_path/conf/live/moonaroh.com"
 mkdir -p "$data_path/www"
 
 echo "### Creating dummy certificate..."
 openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
-  -keyout "$data_path/conf/live/$domains/privkey.pem" \
-  -out "$data_path/conf/live/$domains/fullchain.pem" \
+  -keyout "$data_path/conf/live/moonaroh.com/privkey.pem" \
+  -out "$data_path/conf/live/moonaroh.com/fullchain.pem" \
   -subj "/CN=localhost"
 
+echo "### Stopping existing containers..."
+sudo docker-compose down
+
 echo "### Starting app service..."
-sudo docker-compose up --force-recreate -d app
+sudo docker-compose up -d --build app
+
+echo "### Waiting for app service to start..."
+sleep 10
 
 echo "### Requesting Let's Encrypt certificate..."
 sudo docker-compose run --rm --entrypoint "\
@@ -36,5 +43,5 @@ sudo docker-compose run --rm --entrypoint "\
     --agree-tos \
     --force-renewal" certbot
 
-echo "### Reloading app service..."
-sudo docker-compose exec app nginx -s reload 
+echo "### Restarting app service..."
+sudo docker-compose restart app 
