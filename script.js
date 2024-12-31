@@ -121,16 +121,24 @@ const cache = {
                 return value.map(item => {
                     // If it's a video object
                     if (item.videoId || item.raw?.id) {
-                        // For all videos, consistently use published_at as the main timestamp
+                        // Get both published_at and available_at times
                         const publishedTime = item.raw?.published_at || item.published_at;
+                        const availableTime = item.raw?.available_at || item.available_at;
+                        
+                        // Compare times and use the latest
+                        const latestTime = publishedTime && availableTime ? 
+                            new Date(Math.max(new Date(publishedTime).getTime(), new Date(availableTime).getTime())) :
+                            (publishedTime ? new Date(publishedTime) : (availableTime ? new Date(availableTime) : null));
                         
                         return {
                             ...item,
                             videoId: item.videoId || item.raw?.id,
                             title: item.title || item.raw?.title,
-                            // Always use published_at for the display time
-                            publishedAt: publishedTime ? new Date(publishedTime) : null,
-                            // Keep other dates for reference
+                            // Use the latest time as publishedAt
+                            publishedAt: latestTime,
+                            // Keep original times for reference
+                            originalPublishedAt: publishedTime ? new Date(publishedTime) : null,
+                            availableAt: availableTime ? new Date(availableTime) : null,
                             actualStart: item.raw?.published_at ? new Date(item.raw.published_at) : null,
                             scheduledStart: item.raw?.start_scheduled ? new Date(item.raw.start_scheduled) : null,
                             status: item.status || item.raw?.status
@@ -204,8 +212,8 @@ function updateCacheStatus() {
 
     document.getElementById('lastUpdate').innerHTML = `
         <div class="flex flex-col md:flex-row md:items-center justify-center gap-1 md:gap-2">
-            <span>Last updated: ${latestFetchTime ? new Date(latestFetchTime).toLocaleTimeString() : 'Never'}</span>
-            <span class="text-xs">
+            <span class="text-yellow-100">Last updated: ${latestFetchTime ? new Date(latestFetchTime).toLocaleTimeString() : 'Never'}</span>
+            <span class="text-yellow-200 text-xs">
                 (Live: ${cacheStatus.liveVideos} | 
                  Videos: ${cacheStatus.recentVideos} | 
                  Tweets: ${cacheStatus.tweets})
@@ -217,8 +225,8 @@ function updateCacheStatus() {
 async function checkLiveStatus() {
     // Show loading state
     document.getElementById('liveStatus').innerHTML = `
-        <div class="bg-gray-50 border-2 border-gray-300 rounded-lg p-6 text-center">
-            <p class="text-gray-600">Loading...</p>
+        <div class="bg-purple-800 border-2 border-yellow-500 rounded-lg p-6 text-center">
+            <p class="text-yellow-100">Loading...</p>
         </div>
     `;
     
@@ -269,8 +277,8 @@ async function checkLiveStatus() {
                 console.error(`Error in getCachedOrFetch for ${key}:`, error);
                 // Return empty array but also show error in UI
                 document.getElementById('liveStatus').innerHTML = `
-                    <div class="bg-red-50 border-2 border-red-500 rounded-lg p-6">
-                        <p class="text-red-600">Error loading data: ${error.message}</p>
+                    <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+                        <p class="text-red-400">Error loading data: ${error.message}</p>
                     </div>
                 `;
                 return [];
@@ -417,10 +425,15 @@ async function checkLiveStatus() {
                         }
                     }
                 </style>
-                <div class="grid-container">
             `;
 
+            // Live Streams Section
             if (liveStreams.length > 0) {
+                html += `
+                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">🔴 Live Now</h2>
+                    <div class="grid-container">
+                `;
+                
                 for (const stream of liveStreams) {
                     const videoId = stream.raw?.id;
                     const title = stream.raw?.title;
@@ -428,9 +441,8 @@ async function checkLiveStatus() {
                     const liveViewers = stream.raw?.live_viewers;
 
                     html += `
-                        <div class="grid-item bg-red-50 border-2 border-red-500 p-3 md:p-6 shadow-lg">
-                            <h2 class="text-lg md:text-2xl font-bold text-red-600 mb-2">🔴 Live Now</h2>
-                            <h3 class="text-base md:text-xl font-semibold text-gray-800 mb-2 line-clamp-2">${title}</h3>
+                        <div class="grid-item bg-purple-700 border-2 border-yellow-500 p-3 md:p-6 shadow-lg">
+                            <h3 class="text-base md:text-xl font-semibold text-yellow-200 mb-2 line-clamp-2">${title}</h3>
                             <div class="relative">
                                 <img class="stream-thumbnail rounded-lg shadow-md" 
                                      src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg" 
@@ -440,70 +452,81 @@ async function checkLiveStatus() {
                                      loading="lazy">
                             </div>
                             <div class="space-y-1 my-2">
-                                <p class="text-xs md:text-sm text-gray-700">Started: ${actualStart ? formatDateTime(actualStart) : 'N/A'}</p>
-                                <p class="text-xs md:text-sm text-gray-700">Viewers: ${liveViewers?.toLocaleString() || 'N/A'}</p>
+                                <p class="text-xs md:text-sm text-yellow-100">Started: ${actualStart ? formatDateTime(actualStart) : 'N/A'}</p>
+                                <p class="text-xs md:text-sm text-yellow-100">Viewers: ${liveViewers?.toLocaleString() || 'N/A'}</p>
                             </div>
                             <a href="https://youtube.com/watch?v=${videoId}" 
                                target="_blank" 
-                               class="inline-block w-full text-center bg-red-600 text-white px-4 py-2 text-sm md:text-base rounded-lg hover:bg-red-700 transition-colors touch-feedback">
+                               class="inline-block w-full text-center bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
                                 Watch Stream
                             </a>
                         </div>
                     `;
                 }
+                html += '</div>';
             }
 
+            // Upcoming Streams Section
             if (upcomingStreams.length > 0) {
+                html += `
+                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">⏰ Upcoming Streams</h2>
+                    <div class="grid-container">
+                `;
+                
                 for (const stream of upcomingStreams) {
                     const videoId = stream.raw?.id;
                     const title = stream.raw?.title;
                     const scheduledStart = stream.scheduledStart || new Date(stream.raw?.scheduled_start);
                     
                     html += `
-                        <div class="grid-item bg-gray-50 border-2 border-gray-300 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h2 class="text-xl md:text-2xl font-bold text-gray-700 mb-2">⏰ Upcoming Stream</h2>
-                            <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-3">${title}</h3>
+                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${title}</h3>
                             <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
                                  src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg" 
                                  onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
                                  onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
                                  alt="Stream thumbnail">
                             <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-gray-700">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
+                                <p class="text-sm md:text-base text-yellow-100">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
                             </div>
                             <a href="https://youtube.com/watch?v=${videoId}" 
                                target="_blank" 
-                               class="inline-block bg-gray-600 text-white px-4 py-2 text-sm md:text-base rounded-lg hover:bg-gray-700 transition-colors">
+                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
                                 Set Reminder
                             </a>
                         </div>
                     `;
                 }
+                html += '</div>';
             }
-
-            html += '</div>';
 
             // Recent videos section
             if (filteredRecentVideos.length > 0) {
                 html += `
-                    <h2 class="text-xl md:text-2xl font-bold text-gray-700 my-6">Recent Videos</h2>
+                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">Recent Videos</h2>
                     <div class="grid-container">
                 `;
                 for (const video of filteredRecentVideos) {
                     html += `
-                        <div class="grid-item bg-gray-50 border-2 border-gray-300 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-3">${video.title}</h3>
+                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
                             <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
                                  src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
                                  onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
                                  onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
                                  alt="Video thumbnail">
                             <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-gray-700">Published: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                <p class="text-sm md:text-base text-yellow-100">Published: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                ${video.originalPublishedAt && video.availableAt && 
+                                  video.originalPublishedAt.getTime() !== video.availableAt.getTime() ? 
+                                  `<p class="text-xs text-yellow-200">
+                                      Original publish: ${formatDateTime(video.originalPublishedAt)}<br>
+                                      Available at: ${formatDateTime(video.availableAt)}
+                                   </p>` : ''}
                             </div>
                             <a href="https://youtube.com/watch?v=${video.videoId}" 
                                target="_blank" 
-                               class="inline-block bg-gray-600 text-white px-4 py-2 text-sm md:text-base rounded-lg hover:bg-gray-700 transition-colors">
+                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
                                 Watch Video
                             </a>
                         </div>
@@ -516,45 +539,45 @@ async function checkLiveStatus() {
             if (tweets.length > 0) {
                 html += `
                     <div class="flex items-center justify-between my-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-gray-700">Recent Tweets</h2>
-                        <span class="text-xs text-gray-500 italic">Powered by Nitter (Nitter is dying so this may not work as expected)</span>
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300">Recent Tweets</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Nitter (Nitter is dying so this may not work as expected)</span>
                     </div>
                     <div class="grid-container">
                 `;
                 for (const tweet of tweets) {
                     html += `
-                        <div class="grid-item bg-gray-50 border-2 border-gray-300 rounded-lg p-4 md:p-6 shadow-lg">
+                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
                             <div class="flex items-center mb-2">
                                 ${tweet.isRetweet ? 
-                                    `<span class="text-gray-600 text-sm">🔄 Retweeted from ${tweet.originalAuthor}</span>` :
+                                    `<span class="text-yellow-200 text-sm">🔄 Retweeted from ${tweet.originalAuthor}</span>` :
                                     tweet.isReply ?
-                                    `<span class="text-gray-600 text-sm">↩️ Replying to ${tweet.replyTo}</span>` :
+                                    `<span class="text-yellow-200 text-sm">↩️ Replying to ${tweet.replyTo}</span>` :
                                     tweet.isSpace ?
-                                    `<span class="text-gray-600 text-sm">🎙️ Twitter Space</span>` :
+                                    `<span class="text-yellow-200 text-sm">🎙️ Twitter Space</span>` :
                                     tweet.isQuote ?
-                                    `<span class="text-gray-600 text-sm">💬 Quote Tweet</span>` :
-                                    `<span class="text-gray-600 text-sm">${tweet.originalAuthor}</span>`
+                                    `<span class="text-yellow-200 text-sm">💬 Quote Tweet</span>` :
+                                    `<span class="text-yellow-200 text-sm">${tweet.originalAuthor}</span>`
                                 }
                             </div>
-                            <p class="text-sm md:text-base text-gray-700 mb-3">${formatTweetText(tweet.text)}</p>
+                            <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
                             
                             ${tweet.quotedTweet ? `
-                                <div class="border rounded-lg p-3 mb-3 bg-gray-50">
-                                    <p class="text-sm text-gray-600 mb-1">@${tweet.quotedTweet.author}</p>
+                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-700">
+                                    <p class="text-sm text-yellow-200 mb-1">@${tweet.quotedTweet.author}</p>
                                     <a href="https://x.com/${tweet.quotedTweet.author}/status/${tweet.quotedTweet.id}" 
                                        target="_blank" 
-                                       class="text-sm text-blue-500 hover:underline">
+                                       class="text-sm text-yellow-300 hover:text-yellow-400">
                                         View quoted tweet
                                     </a>
                                 </div>
                             ` : ''}
 
                             ${tweet.spaceInfo ? `
-                                <div class="border rounded-lg p-3 mb-3 bg-blue-50">
-                                    <p class="text-sm font-semibold text-blue-600 mb-2">🎙️ Twitter Space</p>
+                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-700">
+                                    <p class="text-sm font-semibold text-yellow-300 mb-2">🎙️ Twitter Space</p>
                                     <a href="${tweet.spaceInfo.url}" 
                                        target="_blank" 
-                                       class="inline-block bg-blue-500 text-white px-4 py-2 text-sm rounded-lg hover:bg-blue-600 transition-colors touch-feedback">
+                                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
                                         Join Space
                                     </a>
                                 </div>
@@ -585,11 +608,11 @@ async function checkLiveStatus() {
                             ` : ''}
                             
                             <div class="space-y-1 mb-4">
-                                <p class="text-xs text-gray-600">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
+                                <p class="text-xs text-yellow-200">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
                             </div>
                             <a href="https://x.com/${tweet.originalAuthor.substring(1)}/status/${tweet.id}" 
                                target="_blank" 
-                               class="inline-block bg-blue-500 text-white px-4 py-2 text-sm md:text-base rounded-lg hover:bg-blue-600 transition-colors touch-feedback">
+                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
                                 View Tweet
                             </a>
                         </div>
@@ -600,11 +623,11 @@ async function checkLiveStatus() {
 
             // Add music playlist section
             html += `
-                <h2 class="text-xl md:text-2xl font-bold text-gray-700 my-6">Original Songs</h2>
+                <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">Original Songs</h2>
                 <div class="grid-container">
                     ${MUSIC_PLAYLIST_SONGS.map(song => `
-                        <div class="grid-item bg-gray-50 border-2 border-gray-300 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-3">${song.title}</h3>
+                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${song.title}</h3>
                             <div class="aspect-video mb-4">
                                 <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
                                      src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg" 
@@ -613,11 +636,11 @@ async function checkLiveStatus() {
                                      alt="Song thumbnail">
                             </div>
                             <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-gray-700">Published: ${formatDate(song.publishedAt)}</p>
+                                <p class="text-sm md:text-base text-yellow-100">Published: ${formatDate(song.publishedAt)}</p>
                             </div>
                             <a href="https://youtube.com/watch?v=${song.videoId}" 
                                target="_blank" 
-                               class="inline-block bg-gray-600 text-white px-4 py-2 text-sm md:text-base rounded-lg hover:bg-gray-700 transition-colors">
+                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
                                 Listen Now
                             </a>
                         </div>
@@ -669,8 +692,8 @@ async function checkLiveStatus() {
     } catch (error) {
         console.error('Error:', error);
         document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-red-50 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-600">Error checking live status</p>
+            <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Error checking live status</p>
             </div>
         `;
         document.getElementById('timeCounter').textContent = 'Error loading time';
@@ -856,8 +879,8 @@ function formatTweetText(text) {
         .replace(/https?:\/\/nitter\.[^\s]+/g, '')
         // Convert newlines to HTML breaks
         .replace(/\n/g, '<br>')
-        // Make hashtags blue and clickable
-        .replace(/#(\w+)/g, '<span class="text-blue-500">#$1</span>')
+        // Make hashtags yellow and clickable
+        .replace(/#(\w+)/g, '<span class="text-yellow-300">#$1</span>')
         // Clean up extra spaces and line breaks
         .replace(/(<br>){3,}/g, '<br><br>')
         .trim();
@@ -870,8 +893,8 @@ async function safeCheckLiveStatus() {
     } catch (error) {
         console.error('Failed to check live status:', error);
         document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-red-50 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-600">Error checking live status</p>
+            <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Error checking live status</p>
             </div>
         `;
         document.getElementById('timeCounter').textContent = 'Error loading time';
