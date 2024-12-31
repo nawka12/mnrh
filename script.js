@@ -267,8 +267,8 @@ function updateCacheStatus() {
 async function checkLiveStatus() {
     // Show loading state
     document.getElementById('liveStatus').innerHTML = `
-        <div class="bg-purple-800 border-2 border-yellow-500 rounded-lg p-6 text-center">
-            <p class="text-yellow-100">Loading...</p>
+        <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
+            <p class="text-red-400">Loading...</p>
         </div>
     `;
     
@@ -373,7 +373,7 @@ async function checkLiveStatus() {
             } catch (error) {
                 console.error(`Error in getCachedOrFetch for ${key}:`, error);
                 document.getElementById('liveStatus').innerHTML = `
-                    <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+                    <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                         <p class="text-red-400">Error loading data: ${error.message}</p>
                     </div>
                 `;
@@ -555,7 +555,7 @@ async function checkLiveStatus() {
                     const liveViewers = stream.raw?.live_viewers;
 
                     html += `
-                        <div class="grid-item bg-purple-700 border-2 border-yellow-500 p-3 md:p-6 shadow-lg">
+                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 p-3 md:p-6 shadow-lg">
                             <h3 class="text-base md:text-xl font-semibold text-yellow-200 mb-2 line-clamp-2">${title}</h3>
                             <div class="relative">
                                 <img class="stream-thumbnail rounded-lg shadow-md" 
@@ -597,7 +597,7 @@ async function checkLiveStatus() {
                     const scheduledStart = stream.scheduledStart || new Date(stream.raw?.scheduled_start);
                     
                     html += `
-                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${title}</h3>
                             <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
                                  src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg" 
@@ -630,7 +630,7 @@ async function checkLiveStatus() {
                 `;
                 for (const video of filteredRecentVideos) {
                     html += `
-                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
                             <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
                                  src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
@@ -667,7 +667,7 @@ async function checkLiveStatus() {
                 `;
                 for (const tweet of tweets) {
                     html += `
-                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
                             <div class="flex items-center mb-2">
                                 ${tweet.isRetweet ? 
                                     `<span class="text-yellow-200 text-sm">🔄 Retweeted from ${tweet.originalAuthor}</span>` :
@@ -683,7 +683,7 @@ async function checkLiveStatus() {
                             <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
                             
                             ${tweet.quotedTweet ? `
-                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-700">
+                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
                                     <p class="text-sm text-yellow-200 mb-1">@${tweet.quotedTweet.author}</p>
                                     <a href="https://x.com/${tweet.quotedTweet.author}/status/${tweet.quotedTweet.id}" 
                                        target="_blank" 
@@ -694,7 +694,7 @@ async function checkLiveStatus() {
                             ` : ''}
 
                             ${tweet.spaceInfo ? `
-                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-700">
+                                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
                                     <p class="text-sm font-semibold text-yellow-300 mb-2">🎙️ Twitter Space</p>
                                     <a href="${tweet.spaceInfo.url}" 
                                        target="_blank" 
@@ -750,7 +750,7 @@ async function checkLiveStatus() {
                 <div class="grid-container">
                     <div class="scroll-container">
                         ${MUSIC_PLAYLIST_SONGS.map(song => `
-                            <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                            <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
                                 <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${song.title}</h3>
                                 <div class="aspect-video mb-4">
                                     <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
@@ -817,7 +817,7 @@ async function checkLiveStatus() {
     } catch (error) {
         console.error('Error:', error);
         document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                 <p class="text-red-400">Error checking live status</p>
             </div>
         `;
@@ -1049,7 +1049,7 @@ async function safeCheckLiveStatus() {
     } catch (error) {
         console.error('Failed to check live status:', error);
         document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                 <p class="text-red-400">Error checking live status: ${error.message}</p>
             </div>
         `;
