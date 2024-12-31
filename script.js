@@ -542,7 +542,7 @@ async function checkLiveStatus() {
                 for (const stream of liveStreams) {
                     const videoId = stream.raw?.id;
                     const title = stream.raw?.title;
-                    const actualStart = stream.actualStart || new Date(stream.raw?.published_at);
+                    const actualStart = stream.actualStart || new Date(stream.raw?.start_actual);
                     const liveViewers = stream.raw?.live_viewers;
 
                     html += `
