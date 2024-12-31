@@ -457,6 +457,12 @@ async function checkLiveStatus() {
             let html = `
                 <style>
                     .grid-container {
+                        width: 100%;
+                        max-width: 100%;
+                        margin: 0 auto;
+                        box-sizing: border-box;
+                    }
+                    .scroll-container {
                         display: flex;
                         overflow-x: auto;
                         gap: 0.75rem;
@@ -464,19 +470,15 @@ async function checkLiveStatus() {
                         scroll-snap-type: x mandatory;
                         -webkit-overflow-scrolling: touch;
                         scrollbar-width: thin;
-                        margin: 0;
-                        width: 100%;
-                        max-width: 100%;
-                        box-sizing: border-box;
                     }
-                    .grid-container::-webkit-scrollbar {
+                    .scroll-container::-webkit-scrollbar {
                         height: 4px;
                     }
-                    .grid-container::-webkit-scrollbar-track {
+                    .scroll-container::-webkit-scrollbar-track {
                         background: #f1f1f1;
                         border-radius: 4px;
                     }
-                    .grid-container::-webkit-scrollbar-thumb {
+                    .scroll-container::-webkit-scrollbar-thumb {
                         background: #888;
                         border-radius: 4px;
                     }
@@ -489,9 +491,12 @@ async function checkLiveStatus() {
                         padding: 1rem;
                     }
                     @media (min-width: 640px) {
-                        .grid-container {
+                        .scroll-container {
+                            flex-wrap: wrap;
+                            justify-content: center;
                             gap: 1rem;
                             padding: 1rem;
+                            overflow-x: visible;
                         }
                         .grid-item {
                             flex: 0 0 350px;
@@ -535,8 +540,12 @@ async function checkLiveStatus() {
             // Live Streams Section
             if (liveStreams.length > 0) {
                 html += `
-                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">🔴 Live Now</h2>
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">🔴 Live Now</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    </div>
                     <div class="grid-container">
+                        <div class="scroll-container">
                 `;
                 
                 for (const stream of liveStreams) {
@@ -574,8 +583,12 @@ async function checkLiveStatus() {
             // Upcoming Streams Section
             if (upcomingStreams.length > 0) {
                 html += `
-                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">⏰ Upcoming Streams</h2>
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">⏰ Upcoming Streams</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    </div>
                     <div class="grid-container">
+                        <div class="scroll-container">
                 `;
                 
                 for (const stream of upcomingStreams) {
@@ -608,8 +621,12 @@ async function checkLiveStatus() {
             // Recent videos section
             if (filteredRecentVideos.length > 0) {
                 html += `
-                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">Recent Videos</h2>
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Videos</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    </div>
                     <div class="grid-container">
+                        <div class="scroll-container">
                 `;
                 for (const video of filteredRecentVideos) {
                     html += `
@@ -641,11 +658,12 @@ async function checkLiveStatus() {
             // Add tweets section after recent videos
             if (tweets.length > 0) {
                 html += `
-                    <div class="flex items-center justify-between my-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300">Recent Tweets</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Nitter (Nitter is dying so this may not work as expected)</span>
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Tweets</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Nitter</span>
                     </div>
                     <div class="grid-container">
+                        <div class="scroll-container">
                 `;
                 for (const tweet of tweets) {
                     html += `
@@ -726,28 +744,32 @@ async function checkLiveStatus() {
 
             // Add music playlist section
             html += `
-                <h2 class="text-xl md:text-2xl font-bold text-yellow-300 my-6">Original Songs</h2>
+                <div class="flex flex-col items-center mb-6">
+                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Original Songs</h2>
+                </div>
                 <div class="grid-container">
-                    ${MUSIC_PLAYLIST_SONGS.map(song => `
-                        <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${song.title}</h3>
-                            <div class="aspect-video mb-4">
-                                <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                     src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg" 
-                                     onerror="this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
-                                     onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
-                                     alt="Song thumbnail">
+                    <div class="scroll-container">
+                        ${MUSIC_PLAYLIST_SONGS.map(song => `
+                            <div class="grid-item bg-purple-800 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                                <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${song.title}</h3>
+                                <div class="aspect-video mb-4">
+                                    <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
+                                         src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg" 
+                                         onerror="this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
+                                         onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
+                                         alt="Song thumbnail">
+                                </div>
+                                <div class="space-y-1 mb-4">
+                                    <p class="text-sm md:text-base text-yellow-100">Published: ${formatDate(song.publishedAt)}</p>
+                                </div>
+                                <a href="https://youtube.com/watch?v=${song.videoId}" 
+                                   target="_blank" 
+                                   class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                    Listen Now
+                                </a>
                             </div>
-                            <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-yellow-100">Published: ${formatDate(song.publishedAt)}</p>
-                            </div>
-                            <a href="https://youtube.com/watch?v=${song.videoId}" 
-                               target="_blank" 
-                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
-                                Listen Now
-                            </a>
-                        </div>
-                    `).join('')}
+                        `).join('')}
+                    </div>
                 </div>
             `;
 
