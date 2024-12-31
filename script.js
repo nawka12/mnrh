@@ -121,27 +121,69 @@ const cache = {
                 return value.map(item => {
                     // If it's a video object
                     if (item.videoId || item.raw?.id) {
-                        // Get both published_at and available_at times
-                        const publishedTime = item.raw?.published_at || item.published_at;
-                        const availableTime = item.raw?.available_at || item.available_at;
+                        // Get all possible date fields
+                        const dates = {
+                            published_at: item.raw?.published_at,
+                            available_at: item.raw?.available_at,
+                            start_scheduled: item.raw?.start_scheduled,
+                            start_actual: item.raw?.start_actual
+                        };
+
+                        // Convert all date strings to Date objects
+                        const convertedDates = Object.entries(dates).reduce((acc, [key, value]) => {
+                            if (value) {
+                                try {
+                                    acc[key] = new Date(value);
+                                    // Validate the date
+                                    if (isNaN(acc[key].getTime())) {
+                                        console.warn(`Invalid date for ${key}:`, value);
+                                        acc[key] = null;
+                                    }
+                                } catch (error) {
+                                    console.warn(`Error converting date for ${key}:`, error);
+                                    acc[key] = null;
+                                }
+                            } else {
+                                acc[key] = null;
+                            }
+                            return acc;
+                        }, {});
+
+                        // For upcoming streams, use start_scheduled as the main reference
+                        if (item.status === 'upcoming' && convertedDates.start_scheduled) {
+                            return {
+                                ...item,
+                                videoId: item.videoId || item.raw?.id,
+                                title: item.title || item.raw?.title,
+                                scheduledStart: convertedDates.start_scheduled,
+                                status: 'upcoming',
+                                raw: item.raw
+                            };
+                        }
+
+                        // For regular videos, compare published_at and available_at
+                        const publishedAt = convertedDates.published_at;
+                        const availableAt = convertedDates.available_at;
                         
-                        // Compare times and use the latest
-                        const latestTime = publishedTime && availableTime ? 
-                            new Date(Math.max(new Date(publishedTime).getTime(), new Date(availableTime).getTime())) :
-                            (publishedTime ? new Date(publishedTime) : (availableTime ? new Date(availableTime) : null));
-                        
+                        // Get the latest time between published_at and available_at
+                        const latestTime = publishedAt && availableAt ? 
+                            (availableAt > publishedAt ? availableAt : publishedAt) : 
+                            (publishedAt || availableAt);
+
+                        console.log('Processing video:', {
+                            videoId: item.videoId || item.raw?.id,
+                            status: item.status,
+                            dates: convertedDates,
+                            latestTime
+                        });
+
                         return {
                             ...item,
                             videoId: item.videoId || item.raw?.id,
                             title: item.title || item.raw?.title,
-                            // Use the latest time as publishedAt
                             publishedAt: latestTime,
-                            // Keep original times for reference
-                            originalPublishedAt: publishedTime ? new Date(publishedTime) : null,
-                            availableAt: availableTime ? new Date(availableTime) : null,
-                            actualStart: item.raw?.published_at ? new Date(item.raw.published_at) : null,
-                            scheduledStart: item.raw?.start_scheduled ? new Date(item.raw.start_scheduled) : null,
-                            status: item.status || item.raw?.status
+                            status: item.status || item.raw?.status,
+                            raw: item.raw
                         };
                     }
                     return item;
@@ -249,13 +291,25 @@ async function checkLiveStatus() {
             try {
                 console.log(`Fetching ${key}...`);
                 const cachedData = cache.get(key);
+                
                 if (cachedData) {
-                    console.log(`Found cached data for ${key}`);
+                    console.log(`Found cached data for ${key}:`, {
+                        sample: cachedData[0] ? {
+                            videoId: cachedData[0].videoId,
+                            title: cachedData[0].title,
+                            scheduledStart: cachedData[0].scheduledStart,
+                            publishedAt: cachedData[0].publishedAt,
+                            raw: {
+                                published_at: cachedData[0].raw?.published_at,
+                                available_at: cachedData[0].raw?.available_at,
+                                start_scheduled: cachedData[0].raw?.start_scheduled
+                            }
+                        } : 'No items'
+                    });
                     return cachedData;
                 }
                 
                 if (key.includes('Videos')) {
-                    // Initialize client if needed
                     console.log(`Initializing client for ${key}`);
                     holodexClient = await initializeHolodexClient();
                     if (!holodexClient) {
@@ -264,18 +318,60 @@ async function checkLiveStatus() {
                 }
                 
                 console.log(`Fetching fresh data for ${key}`);
-                const data = await fetchFn();
-                console.log(`Received data for ${key}:`, data);
+                const rawData = await fetchFn();
                 
-                if (!data) {
+                // Process the fresh data to ensure consistent date handling
+                const freshData = rawData.map(item => {
+                    if (item.status === 'upcoming' && item.raw?.start_scheduled) {
+                        return {
+                            ...item,
+                            videoId: item.videoId || item.raw?.id,
+                            title: item.title || item.raw?.title,
+                            scheduledStart: new Date(item.raw.start_scheduled),
+                            status: 'upcoming',
+                            raw: item.raw
+                        };
+                    }
+                    
+                    const publishedAt = item.raw?.published_at ? new Date(item.raw.published_at) : null;
+                    const availableAt = item.raw?.available_at ? new Date(item.raw.available_at) : null;
+                    
+                    const latestTime = publishedAt && availableAt ? 
+                        (availableAt > publishedAt ? availableAt : publishedAt) : 
+                        (publishedAt || availableAt);
+                    
+                    return {
+                        ...item,
+                        videoId: item.videoId || item.raw?.id,
+                        title: item.title || item.raw?.title,
+                        publishedAt: latestTime,
+                        status: item.status || item.raw?.status,
+                        raw: item.raw
+                    };
+                });
+
+                console.log(`Processed fresh data for ${key}:`, {
+                    sample: freshData[0] ? {
+                        videoId: freshData[0].videoId,
+                        title: freshData[0].title,
+                        scheduledStart: freshData[0].scheduledStart,
+                        publishedAt: freshData[0].publishedAt,
+                        raw: {
+                            published_at: freshData[0].raw?.published_at,
+                            available_at: freshData[0].raw?.available_at,
+                            start_scheduled: freshData[0].raw?.start_scheduled
+                        }
+                    } : 'No items'
+                });
+                
+                if (!freshData) {
                     throw new Error(`No data returned for ${key}`);
                 }
                 
-                cache.set(key, data);
-                return data;
+                cache.set(key, freshData);
+                return freshData;
             } catch (error) {
                 console.error(`Error in getCachedOrFetch for ${key}:`, error);
-                // Return empty array but also show error in UI
                 document.getElementById('liveStatus').innerHTML = `
                     <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
                         <p class="text-red-400">Error loading data: ${error.message}</p>
@@ -320,6 +416,15 @@ async function checkLiveStatus() {
         // Check videos first
         if (filteredRecentVideos.length > 0) {
             const latestVideo = filteredRecentVideos[0];
+            console.log('Latest video data:', {
+                title: latestVideo.title,
+                publishedAt: latestVideo.publishedAt,
+                raw: {
+                    published_at: latestVideo.raw?.published_at,
+                    available_at: latestVideo.raw?.available_at
+                }
+            });
+            
             if (latestVideo.publishedAt) {
                 latestActivity = new Date(latestVideo.publishedAt);
             }
@@ -516,13 +621,11 @@ async function checkLiveStatus() {
                                  onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
                                  alt="Video thumbnail">
                             <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-yellow-100">Published: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
-                                ${video.originalPublishedAt && video.availableAt && 
-                                  video.originalPublishedAt.getTime() !== video.availableAt.getTime() ? 
-                                  `<p class="text-xs text-yellow-200">
-                                      Original publish: ${formatDateTime(video.originalPublishedAt)}<br>
-                                      Available at: ${formatDateTime(video.availableAt)}
-                                   </p>` : ''}
+                                <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                <p class="text-xs text-yellow-200">
+                                    Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
+                                    Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
+                                </p>
                             </div>
                             <a href="https://youtube.com/watch?v=${video.videoId}" 
                                target="_blank" 
@@ -886,22 +989,53 @@ function formatTweetText(text) {
         .trim();
 }
 
-// Add this to handle safe status checking
+// Update the force refresh function
+window.forceCacheRefresh = async () => {
+    try {
+        // Clear all cached data
+        ['liveVideos', 'recentVideos', 'tweets'].forEach(key => {
+            console.log(`Clearing cache for ${key}`);
+            localStorage.removeItem(key);
+        });
+        
+        // Reset the last update time to force immediate check
+        lastUpdateTime = null;
+        
+        console.log('Starting force refresh...');
+        // Force an immediate check with cache bypass
+        await safeCheckLiveStatus();
+        
+        // Update the cache status display
+        updateCacheStatus();
+        
+        console.log('Force refresh completed');
+    } catch (error) {
+        console.error('Force refresh failed:', error);
+    }
+};
+
+// Update the safe status checking function
 async function safeCheckLiveStatus() {
     try {
+        // Reset Holodex client on each check to ensure fresh connection
+        holodexClient = await initializeHolodexClient();
+        
         await checkLiveStatus();
+        
+        // Update last check time after successful update
+        lastUpdateTime = new Date();
     } catch (error) {
         console.error('Failed to check live status:', error);
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-purple-900 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-400">Error checking live status</p>
+                <p class="text-red-400">Error checking live status: ${error.message}</p>
             </div>
         `;
         document.getElementById('timeCounter').textContent = 'Error loading time';
     }
 }
 
-// Add this initialization function
+// Update the initialization function
 async function initializeApp() {
     console.log('Initializing app...');
     try {
@@ -914,21 +1048,22 @@ async function initializeApp() {
             throw new Error('Failed to initialize Holodex client');
         }
         
-        // Then start the live status checking
-        console.log('Starting live status check...');
+        // Initial status check
+        console.log('Starting initial live status check...');
         await safeCheckLiveStatus();
         
-        // Set up interval with rate limiting
-        let updateInterval = setInterval(() => {
+        // Set up interval for auto-refresh
+        const autoRefreshInterval = setInterval(async () => {
             const now = new Date();
             if (!lastUpdateTime || (now - lastUpdateTime) >= UPDATE_INTERVAL) {
-                safeCheckLiveStatus();
+                console.log('Running auto-refresh...');
+                await safeCheckLiveStatus();
             }
-        }, 60000);
+        }, 60000); // Check every minute
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            if (updateInterval) clearInterval(updateInterval);
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
             if (window.timeCounterInterval) clearInterval(window.timeCounterInterval);
         });
     } catch (error) {
@@ -943,18 +1078,3 @@ async function initializeApp() {
 
 // Wait for DOM to be fully loaded, then initialize
 document.addEventListener('DOMContentLoaded', initializeApp);
-
-// Update the force refresh function
-window.forceCacheRefresh = async () => {
-    try {
-        // Clear all cached data
-        localStorage.removeItem('liveVideos');
-        localStorage.removeItem('recentVideos');
-        localStorage.removeItem('tweets');
-        
-        // Force an immediate check
-        await safeCheckLiveStatus();
-    } catch (error) {
-        console.error('Force refresh failed:', error);
-    }
-};
