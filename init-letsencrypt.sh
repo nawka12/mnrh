@@ -1,13 +1,13 @@
 #!/bin/bash
 
-domains=(moonaroh.com)
+domains=(beta.moonaroh.com)
 email="kayfa.haluk.y@gmail.com"
 staging=0
 
 echo "### Cleaning up old certificates..."
-sudo rm -rf certbot/conf/live/moonaroh.com
-sudo rm -rf certbot/conf/archive/moonaroh.com
-sudo rm -rf certbot/conf/renewal/moonaroh.com.conf
+sudo rm -rf certbot/conf/live/beta.moonaroh.com
+sudo rm -rf certbot/conf/archive/beta.moonaroh.com
+sudo rm -rf certbot/conf/renewal/beta.moonaroh.com.conf
 
 echo "### Creating directories..."
 mkdir -p certbot/conf
@@ -28,18 +28,18 @@ sudo docker-compose run --rm certbot \
   --webroot \
   --webroot-path /var/www/certbot \
   --email $email \
-  -d moonaroh.com \
+  -d beta.moonaroh.com \
   --agree-tos \
   --no-eff-email \
   --force-renewal \
-  --cert-name moonaroh.com \
+  --cert-name beta.moonaroh.com \
   -v
 
 # If certificate was obtained successfully, create SSL config
-if [ -f "certbot/conf/live/moonaroh.com/fullchain.pem" ]; then
+if [ -f "certbot/conf/live/beta.moonaroh.com/fullchain.pem" ]; then
     echo "### Creating SSL configuration..."
-    echo "ssl_certificate /etc/letsencrypt/live/moonaroh.com/fullchain.pem;" > ssl.conf
-    echo "ssl_certificate_key /etc/letsencrypt/live/moonaroh.com/privkey.pem;" >> ssl.conf
+    echo "ssl_certificate /etc/letsencrypt/live/beta.moonaroh.com/fullchain.pem;" > ssl.conf
+    echo "ssl_certificate_key /etc/letsencrypt/live/beta.moonaroh.com/privkey.pem;" >> ssl.conf
     
     # Copy SSL config to nginx
     sudo docker cp ssl.conf vite-app:/etc/nginx/conf.d/
