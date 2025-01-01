@@ -381,7 +381,7 @@ async function checkLiveStatus() {
             }
         };
 
-        const [liveVideos, recentVideos, tweets] = await Promise.all([
+        const [liveVideos, recentVideos, collabVideos, tweets] = await Promise.all([
             getCachedOrFetch('liveVideos', async () => {
                 const client = await initializeHolodexClient();
                 return client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
@@ -390,6 +390,10 @@ async function checkLiveStatus() {
                 const client = await initializeHolodexClient();
                 return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { limit: 15 });
             }),
+            getCachedOrFetch('collabVideos', async () => {
+                const client = await initializeHolodexClient();
+                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 5 });
+            }),
             getCachedOrFetch('tweets', getTweets)
         ]);
 
@@ -397,7 +401,7 @@ async function checkLiveStatus() {
         updateCacheStatus();
 
         // Add this debug log
-        console.log('Retrieved data:', { liveVideos, recentVideos, tweets });
+        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, tweets });
 
         // Filter out live and upcoming streams from recent videos
         const filteredRecentVideos = recentVideos
@@ -410,9 +414,9 @@ async function checkLiveStatus() {
         // Add this debug log
         console.log('Filtered videos:', filteredRecentVideos);
 
-        // Get the latest activity time from videos and tweets
+        // Get the latest activity time from videos, collabs, and tweets
         let latestActivity = null;
-        
+
         // Check videos first
         if (filteredRecentVideos.length > 0) {
             const latestVideo = filteredRecentVideos[0];
@@ -429,8 +433,28 @@ async function checkLiveStatus() {
                 latestActivity = new Date(latestVideo.publishedAt);
             }
         }
-        
-        // Check tweets and compare with video date
+
+        // Check collabs and compare with current latest activity
+        if (collabVideos.length > 0) {
+            const latestCollab = collabVideos[0];
+            console.log('Latest collab data:', {
+                title: latestCollab.title,
+                publishedAt: latestCollab.publishedAt,
+                raw: {
+                    published_at: latestCollab.raw?.published_at,
+                    available_at: latestCollab.raw?.available_at
+                }
+            });
+            
+            if (latestCollab.publishedAt) {
+                const collabDate = new Date(latestCollab.publishedAt);
+                if (!latestActivity || collabDate > latestActivity) {
+                    latestActivity = collabDate;
+                }
+            }
+        }
+
+        // Check tweets and compare with current latest activity
         if (tweets.length > 0) {
             const latestTweet = new Date(tweets[0].timestamp * 1000);
             if (!latestActivity || latestTweet > latestActivity) {
@@ -742,6 +766,47 @@ async function checkLiveStatus() {
                 html += '</div>';
             }
 
+            // Add collabs section before the music playlist section
+            if (collabVideos.length > 0) {
+                html += `
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Collaborations</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    </div>
+                    <div class="grid-container">
+                        <div class="scroll-container">
+                            ${collabVideos.map(video => `
+                                <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
+                                    <div class="aspect-video mb-4">
+                                        <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
+                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
+                                             onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                             onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                             alt="Collab thumbnail">
+                                    </div>
+                                    <div class="space-y-1 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                        <p class="text-xs text-yellow-200">
+                                            Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
+                                            Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
+                                        </p>
+                                        ${video.raw?.channel?.name ? 
+                                            `<p class="text-sm text-yellow-200">Channel: ${video.raw.channel.name}</p>` : 
+                                            ''}
+                                    </div>
+                                    <a href="https://youtube.com/watch?v=${video.videoId}" 
+                                       target="_blank" 
+                                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                        Watch Collab
+                                    </a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             // Add music playlist section
             html += `
                 <div class="flex flex-col items-center mb-6">
@@ -1015,7 +1080,7 @@ function formatTweetText(text) {
 window.forceCacheRefresh = async () => {
     try {
         // Clear all cached data
-        ['liveVideos', 'recentVideos', 'tweets'].forEach(key => {
+        ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY].forEach(key => {
             console.log(`Clearing cache for ${key}`);
             localStorage.removeItem(key);
         });
