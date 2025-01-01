@@ -791,7 +791,7 @@ async function checkLiveStatus() {
                             </div>
                             <a href="https://x.com/${tweet.originalAuthor.substring(1)}/status/${tweet.id}" 
                                target="_blank" 
-                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
+                               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                 View Tweet
                             </a>
                         </div>
@@ -833,7 +833,7 @@ async function checkLiveStatus() {
                                     </div>
                                     <a href="https://youtube.com/watch?v=${video.videoId}" 
                                        target="_blank" 
-                                       class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                         Watch Collab
                                     </a>
                                 </div>
@@ -876,7 +876,7 @@ async function checkLiveStatus() {
                                     </div>
                                     <a href="https://youtube.com/watch?v=${video.videoId}" 
                                        target="_blank" 
-                                       class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                         Watch Clip
                                     </a>
                                 </div>
@@ -910,7 +910,7 @@ async function checkLiveStatus() {
                                 </div>
                                 <a href="https://youtube.com/watch?v=${song.videoId}" 
                                    target="_blank" 
-                                   class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                   class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                     Listen Now
                                 </a>
                             </div>
