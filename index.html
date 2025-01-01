@@ -255,6 +255,16 @@
             hyphens: auto;
             -webkit-hyphens: auto;
             -ms-hyphens: auto;
+            padding-top: 0; /* Reset padding */
+        }
+
+        /* Add padding only when status badge is present */
+        .card:has(.status-badge) h3 {
+            padding-top: 1.5rem;
+        }
+
+        /* Fallback for browsers that don't support :has */
+        .status-badge + h3 {
             padding-top: 1.5rem;
         }
 
