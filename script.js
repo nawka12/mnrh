@@ -6,6 +6,10 @@ console.log('Script loaded');
 // Initialize both clients
 let holodexClient = null;
 
+// Add these constants near the top of the file, after other constants
+const COLLABS_CACHE_KEY = 'collabVideos';
+const CLIPS_CACHE_KEY = 'clipVideos';
+
 // Add this constant for the music playlist
 const MUSIC_PLAYLIST_ID = 'PLdcktSYecSKfeQ7p5CrVO4avrmLzSL8mt';
 
@@ -234,7 +238,7 @@ function updateCacheStatus() {
     let latestFetchTime = 0;
 
     // Check each cache item
-    ['liveVideos', 'recentVideos', 'tweets'].forEach(key => {
+    ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY].forEach(key => {
         try {
             const item = localStorage.getItem(key);
             if (item) {
@@ -258,6 +262,8 @@ function updateCacheStatus() {
             <span class="text-yellow-200 text-xs">
                 (Live: ${cacheStatus.liveVideos} | 
                  Videos: ${cacheStatus.recentVideos} | 
+                 Collabs: ${cacheStatus[COLLABS_CACHE_KEY]} |
+                 Clips: ${cacheStatus[CLIPS_CACHE_KEY]} |
                  Tweets: ${cacheStatus.tweets})
             </span>
         </div>
@@ -381,7 +387,7 @@ async function checkLiveStatus() {
             }
         };
 
-        const [liveVideos, recentVideos, collabVideos, tweets] = await Promise.all([
+        const [liveVideos, recentVideos, collabVideos, clipVideos, tweets] = await Promise.all([
             getCachedOrFetch('liveVideos', async () => {
                 const client = await initializeHolodexClient();
                 return client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
@@ -390,9 +396,13 @@ async function checkLiveStatus() {
                 const client = await initializeHolodexClient();
                 return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { limit: 15 });
             }),
-            getCachedOrFetch('collabVideos', async () => {
+            getCachedOrFetch(COLLABS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
                 return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 5 });
+            }),
+            getCachedOrFetch(CLIPS_CACHE_KEY, async () => {
+                const client = await initializeHolodexClient();
+                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 5 });
             }),
             getCachedOrFetch('tweets', getTweets)
         ]);
@@ -401,7 +411,7 @@ async function checkLiveStatus() {
         updateCacheStatus();
 
         // Add this debug log
-        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, tweets });
+        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, clipVideos, tweets });
 
         // Filter out live and upcoming streams from recent videos
         const filteredRecentVideos = recentVideos
@@ -807,6 +817,47 @@ async function checkLiveStatus() {
                 `;
             }
 
+            // Add clips section before the music playlist section (after collabs)
+            if (clipVideos.length > 0) {
+                html += `
+                    <div class="flex flex-col items-center mb-6">
+                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Clips</h2>
+                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    </div>
+                    <div class="grid-container">
+                        <div class="scroll-container">
+                            ${clipVideos.map(video => `
+                                <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
+                                    <div class="aspect-video mb-4">
+                                        <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
+                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
+                                             onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                             onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                             alt="Clip thumbnail">
+                                    </div>
+                                    <div class="space-y-1 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                        <p class="text-xs text-yellow-200">
+                                            Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
+                                            Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
+                                        </p>
+                                        ${video.raw?.channel?.name ? 
+                                            `<p class="text-sm text-yellow-200">Clipped by: ${video.raw.channel.name}</p>` : 
+                                            ''}
+                                    </div>
+                                    <a href="https://youtube.com/watch?v=${video.videoId}" 
+                                       target="_blank" 
+                                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                        Watch Clip
+                                    </a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             // Add music playlist section
             html += `
                 <div class="flex flex-col items-center mb-6">
@@ -1080,7 +1131,7 @@ function formatTweetText(text) {
 window.forceCacheRefresh = async () => {
     try {
         // Clear all cached data
-        ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY].forEach(key => {
+        ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY].forEach(key => {
             console.log(`Clearing cache for ${key}`);
             localStorage.removeItem(key);
         });
