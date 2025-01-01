@@ -539,9 +539,22 @@ async function checkLiveStatus() {
                         }
                     }
                     .stream-thumbnail {
+                        width: 100%;
+                        height: auto;
                         aspect-ratio: 16/9;
                         object-fit: cover;
-                        width: 100%;
+                        background-color: rgba(0, 0, 0, 0.2);
+                        border-radius: 0.75rem;
+                        transition: transform 0.3s ease;
+                    }
+                    .thumbnail-container {
+                        position: relative;
+                        overflow: hidden;
+                        border-radius: 0.75rem;
+                        margin-bottom: 1rem;
+                    }
+                    .thumbnail-container:hover .stream-thumbnail {
+                        transform: scale(1.05);
                     }
                     @media (min-width: 640px) {
                         .grid-container {
@@ -574,11 +587,13 @@ async function checkLiveStatus() {
             // Live Streams Section
             if (liveStreams.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">🔴 Live Now</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">🔴 Live Now</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                 `;
                 
@@ -589,23 +604,22 @@ async function checkLiveStatus() {
                     const liveViewers = stream.raw?.live_viewers;
 
                     html += `
-                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 p-3 md:p-6 shadow-lg">
-                            <h3 class="text-base md:text-xl font-semibold text-yellow-200 mb-2 line-clamp-2">${title}</h3>
-                            <div class="relative">
-                                <img class="stream-thumbnail rounded-lg shadow-md" 
-                                     src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg" 
+                        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                            ${stream.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${title}</h3>
+                            <div class="thumbnail-container">
+                                <img class="stream-thumbnail"
+                                     src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg"
                                      onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                     onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                     alt="Stream thumbnail"
-                                     loading="lazy">
+                                     alt="Stream thumbnail">
                             </div>
-                            <div class="space-y-1 my-2">
-                                <p class="text-xs md:text-sm text-yellow-100">Started: ${actualStart ? formatDateTime(actualStart) : 'N/A'}</p>
-                                <p class="text-xs md:text-sm text-yellow-100">Viewers: ${liveViewers?.toLocaleString() || 'N/A'}</p>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm md:text-base text-yellow-100 opacity-90">${actualStart ? formatDateTime(actualStart) : 'N/A'}</p>
+                                <p class="text-sm md:text-base text-yellow-100">Viewers: ${liveViewers?.toLocaleString() || 'N/A'}</p>
                             </div>
-                            <a href="https://youtube.com/watch?v=${videoId}" 
-                               target="_blank" 
-                               class="inline-block w-full text-center bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
+                            <a href="https://youtube.com/watch?v=${videoId}"
+                               target="_blank"
+                               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                 Watch Stream
                             </a>
                         </div>
@@ -617,11 +631,13 @@ async function checkLiveStatus() {
             // Upcoming Streams Section
             if (upcomingStreams.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">⏰ Upcoming Streams</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">⏰ Upcoming Streams</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                 `;
                 
@@ -631,19 +647,21 @@ async function checkLiveStatus() {
                     const scheduledStart = stream.scheduledStart || new Date(stream.raw?.scheduled_start);
                     
                     html += `
-                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${title}</h3>
-                            <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                 src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg" 
-                                 onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                 onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                 alt="Stream thumbnail">
-                            <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-yellow-100">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
+                        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                            ${stream.status === 'upcoming' ? '<span class="status-badge live-badge">UPCOMING</span>' : ''}
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${title}</h3>
+                            <div class="thumbnail-container">
+                                <img class="stream-thumbnail"
+                                     src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg"
+                                     onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
+                                     alt="Stream thumbnail">
                             </div>
-                            <a href="https://youtube.com/watch?v=${videoId}" 
-                               target="_blank" 
-                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm md:text-base text-yellow-100 opacity-90">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
+                            </div>
+                            <a href="https://youtube.com/watch?v=${videoId}"
+                               target="_blank"
+                               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                 Set Reminder
                             </a>
                         </div>
@@ -655,32 +673,36 @@ async function checkLiveStatus() {
             // Recent videos section
             if (filteredRecentVideos.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Videos</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Videos</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                 `;
                 for (const video of filteredRecentVideos) {
                     html += `
-                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
-                            <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                 src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
-                                 onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                 onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                 alt="Video thumbnail">
-                            <div class="space-y-1 mb-4">
-                                <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                            ${video.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
+                            <div class="thumbnail-container">
+                                <img class="stream-thumbnail"
+                                     src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
+                                     onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                     alt="Video thumbnail">
+                            </div>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm md:text-base text-yellow-100 opacity-90">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
                                 <p class="text-xs text-yellow-200">
                                     Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
                                     Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
                                 </p>
                             </div>
-                            <a href="https://youtube.com/watch?v=${video.videoId}" 
-                               target="_blank" 
-                               class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                            <a href="https://youtube.com/watch?v=${video.videoId}"
+                               target="_blank"
+                               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                 Watch Video
                             </a>
                         </div>
@@ -692,16 +714,18 @@ async function checkLiveStatus() {
             // Add tweets section after recent videos
             if (tweets.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Tweets</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Nitter</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Tweets</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Nitter</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                 `;
                 for (const tweet of tweets) {
                     html += `
-                        <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
+                        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
                             <div class="flex items-center mb-2">
                                 ${tweet.isRetweet ? 
                                     `<span class="text-yellow-200 text-sm">🔄 Retweeted from ${tweet.originalAuthor}</span>` :
@@ -779,24 +803,26 @@ async function checkLiveStatus() {
             // Add collabs section before the music playlist section
             if (collabVideos.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Collaborations</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Collaborations</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                             ${collabVideos.map(video => `
-                                <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
-                                    <div class="aspect-video mb-4">
-                                        <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    ${video.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
+                                    <div class="thumbnail-container">
+                                        <img class="stream-thumbnail"
+                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
                                              onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                             onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
                                              alt="Collab thumbnail">
                                     </div>
-                                    <div class="space-y-1 mb-4">
-                                        <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
                                         <p class="text-xs text-yellow-200">
                                             Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
                                             Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
@@ -807,7 +833,7 @@ async function checkLiveStatus() {
                                     </div>
                                     <a href="https://youtube.com/watch?v=${video.videoId}" 
                                        target="_blank" 
-                                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                       class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                         Watch Collab
                                     </a>
                                 </div>
@@ -820,24 +846,26 @@ async function checkLiveStatus() {
             // Add clips section before the music playlist section (after collabs)
             if (clipVideos.length > 0) {
                 html += `
-                    <div class="flex flex-col items-center mb-6">
-                        <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Recent Clips</h2>
-                        <span class="text-xs text-yellow-200 italic">Powered by Holodex</span>
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Clips</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                     </div>
-                    <div class="grid-container">
+                `;
+                html += `
+                    <div class="grid-container mb-12">
                         <div class="scroll-container">
                             ${clipVideos.map(video => `
-                                <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${video.title}</h3>
-                                    <div class="aspect-video mb-4">
-                                        <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg" 
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    ${video.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
+                                    <div class="thumbnail-container">
+                                        <img class="stream-thumbnail"
+                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
                                              onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                             onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
                                              alt="Clip thumbnail">
                                     </div>
-                                    <div class="space-y-1 mb-4">
-                                        <p class="text-sm md:text-base text-yellow-100">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
                                         <p class="text-xs text-yellow-200">
                                             Published: ${video.raw?.published_at ? formatDateTime(new Date(video.raw.published_at)) : 'N/A'}<br>
                                             Available at: ${video.raw?.available_at ? formatDateTime(new Date(video.raw.available_at)) : 'N/A'}
@@ -848,7 +876,7 @@ async function checkLiveStatus() {
                                     </div>
                                     <a href="https://youtube.com/watch?v=${video.videoId}" 
                                        target="_blank" 
-                                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                       class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                         Watch Clip
                                     </a>
                                 </div>
@@ -860,27 +888,29 @@ async function checkLiveStatus() {
 
             // Add music playlist section
             html += `
-                <div class="flex flex-col items-center mb-6">
-                    <h2 class="text-xl md:text-2xl font-bold text-yellow-300 mb-2">Original Songs</h2>
+                <div class="flex flex-col items-center mb-8">
+                    <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
                 </div>
-                <div class="grid-container">
+            `;
+            html += `
+                <div class="grid-container mb-12">
                     <div class="scroll-container">
                         ${MUSIC_PLAYLIST_SONGS.map(song => `
-                            <div class="grid-item bg-purple-600 border-2 border-yellow-500 rounded-lg p-4 md:p-6 shadow-lg">
-                                <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-3">${song.title}</h3>
-                                <div class="aspect-video mb-4">
-                                    <img class="w-full stream-thumbnail rounded-lg mb-4 shadow-md" 
-                                         src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg" 
+                            <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                ${song.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+                                <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
+                                <div class="thumbnail-container">
+                                    <img class="stream-thumbnail"
+                                         src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg"
                                          onerror="this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
-                                         onload="if(this.naturalWidth < 200) this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
                                          alt="Song thumbnail">
                                 </div>
-                                <div class="space-y-1 mb-4">
-                                    <p class="text-sm md:text-base text-yellow-100">Published: ${formatDate(song.publishedAt)}</p>
+                                <div class="space-y-2 mb-4">
+                                    <p class="text-sm md:text-base text-yellow-100 opacity-90">Published: ${formatDate(song.publishedAt)}</p>
                                 </div>
                                 <a href="https://youtube.com/watch?v=${song.videoId}" 
                                    target="_blank" 
-                                   class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm md:text-base rounded-lg hover:bg-yellow-600 transition-colors">
+                                   class="inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                     Listen Now
                                 </a>
                             </div>
