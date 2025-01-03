@@ -10,55 +10,153 @@ let holodexClient = null;
 const COLLABS_CACHE_KEY = 'collabVideos';
 const CLIPS_CACHE_KEY = 'clipVideos';
 
-// Add this constant for the music playlist
-const MUSIC_PLAYLIST_ID = 'PLdcktSYecSKfeQ7p5CrVO4avrmLzSL8mt';
+// Add this constant for original songs cache
+const ORIGINAL_SONGS_CACHE_KEY = 'originalSongs';
 
-// Add this constant with the playlist songs
-const MUSIC_PLAYLIST_SONGS = [
+// Add this constant near the other cache keys
+const COVER_SONGS_CACHE_KEY = 'coverSongs';
+
+// Add this constant for career timeline
+const CAREER_TIMELINE = [
     {
-        videoId: '47hoUcGoZTI',
-        title: 'Moona Hoshinova - Nightmare',
-        publishedAt: '2024-12-09'
+        date: "2020-03-03",
+        event: "YouTube channel created"
     },
     {
-        videoId: '8fSdl2kWrHg',
-        title: 'Moona Hoshinova - Multiverse',
-        publishedAt: '2024-11-11'
+        date: "2020-04-07",
+        event: "First tweet on Twitter"
     },
     {
-        videoId: 'cU5_JIEFTOw',
-        title: 'Moona Hoshinova - DEJAVU',
-        publishedAt: '2024-04-11'
+        date: "2020-04-11",
+        event: "Official debut as hololive Indonesia 1st Generation member"
     },
     {
-        videoId: 'qTr2x78_u4k',
-        title: 'Moona Hoshinova - Taut Hati',
-        publishedAt: '2024-01-06'
+        date: "2020-06-04",
+        event: "Released first cover song 'Again' by Beverly"
     },
     {
-        videoId: 'PFoGNZ05CJw',
-        title: "Moona Hoshinova - Who's Toxic? It's You!",
-        publishedAt: '2023-04-11'
+        date: "2020-08-16",
+        event: "Debuted second 2D costume (Traditional Indonesian clothes)"
     },
     {
-        videoId: 'LXRSp8QbOeg',
-        title: 'Moona Hoshinova - Perisai Jitu',
-        publishedAt: '2022-11-25'
+        date: "2021-01-06",
+        event: "Reached 400,000 YouTube subscribers (First Indonesian hololive member)"
     },
     {
-        videoId: 'stmZAThUl64',
-        title: 'Moona Hoshinova - High Tide',
-        publishedAt: '2022-02-15'
+        date: "2021-02-16",
+        event: "Released original song 'Ai no Chiisana Uta' and reached 500k subscribers"
     },
     {
-        videoId: 'q4N7EhUWOAA',
-        title: 'Moona Hoshinova - Ai no Chiisana Uta',
-        publishedAt: '2021-02-16'
+        date: "2021-04-15",
+        event: "Reached 600,000 YouTube subscribers"
     },
     {
-        videoId: 'N_1xVr7wp6Q',
-        title: 'Moona Hoshinova - KSZK',
-        publishedAt: '2020-06-29'
+        date: "2021-06-06",
+        event: "Reached 700,000 YouTube subscribers"
+    },
+    {
+        date: "2021-08-08",
+        event: "Reached 800,000 YouTube subscribers"
+    },
+    {
+        date: "2021-10-22",
+        event: "Debuted third 2D model"
+    },
+    {
+        date: "2021-10-30",
+        event: "Reached 900,000 YouTube subscribers"
+    },
+    {
+        date: "2022-02-15",
+        event: "Released second original song 'High Tide'"
+    },
+    {
+        date: "2022-02-22",
+        event: "Reached 1 million YouTube subscribers"
+    },
+    {
+        date: "2022-03-19",
+        event: "3D model debut at hololive 3rd fes"
+    },
+    {
+        date: "2022-04-15",
+        event: "Released group song 'HI-15' with Risu and Iofi"
+    },
+    {
+        date: "2022-05-06",
+        event: "Twitter account verified (First hololive ID Gen 1 member)"
+    },
+    {
+        date: "2022-09-16",
+        event: "Official 3D model showcase and released 'Perisai Jitu'"
+    },
+    {
+        date: "2022-10-27",
+        event: "Debuted fourth 2D costume"
+    },
+    {
+        date: "2022-11-04",
+        event: "Added potato accessory to third 2D costume"
+    },
+    {
+        date: "2022-11-25",
+        event: "Released full MV of 'Perisai Jitu'"
+    },
+    {
+        date: "2023-02-03",
+        event: "Debuted fifth 2D costume (New Year Kimono)"
+    },
+    {
+        date: "2023-03-19",
+        event: "Debuted 3D idol costume at hololive 4th fes"
+    },
+    {
+        date: "2023-04-01",
+        event: "Debuted child version 2D model"
+    },
+    {
+        date: "2023-04-11",
+        event: "Released fourth original song 'Who's Toxic? It's You!'"
+    },
+    {
+        date: "2023-07-01",
+        event: "Debuted 3D yukata costume"
+    },
+    {
+        date: "2023-08-27",
+        event: "Debuted 3D swimsuit at hololive Summer 2023"
+    },
+    {
+        date: "2024-01-06",
+        event: "Released first EP 'ORBITURE' and new song 'Taut Hati'"
+    },
+    {
+        date: "2024-01-13",
+        event: "Revealed 3.0 update for main 2D model"
+    },
+    {
+        date: "2024-04-11",
+        event: "Debuted sixth 2D costume and released song 'DEJAVU'"
+    },
+    {
+        date: "2024-06-03",
+        event: "Added construction uniform accessories to third 2D costume"
+    },
+    {
+        date: "2024-08-11",
+        event: "Debuted 3D chibi model in holo no graffiti"
+    },
+    {
+        date: "2024-08-17",
+        event: "Debuted 3D school uniform and released 'Senandung Jiwa'"
+    },
+    {
+        date: "2024-11-11",
+        event: "Released seventh original song 'Multiverse'"
+    },
+    {
+        date: "2024-12-09",
+        event: "Released eighth original song 'Nightmare'"
     }
 ];
 
@@ -238,7 +336,7 @@ function updateCacheStatus() {
     let latestFetchTime = 0;
 
     // Check each cache item
-    ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY].forEach(key => {
+    ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY, ORIGINAL_SONGS_CACHE_KEY, COVER_SONGS_CACHE_KEY].forEach(key => {
         try {
             const item = localStorage.getItem(key);
             if (item) {
@@ -264,6 +362,8 @@ function updateCacheStatus() {
                  Videos: ${cacheStatus.recentVideos} | 
                  Collabs: ${cacheStatus[COLLABS_CACHE_KEY]} |
                  Clips: ${cacheStatus[CLIPS_CACHE_KEY]} |
+                 Songs: ${cacheStatus[ORIGINAL_SONGS_CACHE_KEY]} |
+                 Covers: ${cacheStatus[COVER_SONGS_CACHE_KEY]} |
                  Tweets: ${cacheStatus.tweets})
             </span>
         </div>
@@ -387,7 +487,7 @@ async function checkLiveStatus() {
             }
         };
 
-        const [liveVideos, recentVideos, collabVideos, clipVideos, tweets] = await Promise.all([
+        const [liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets] = await Promise.all([
             getCachedOrFetch('liveVideos', async () => {
                 const client = await initializeHolodexClient();
                 return client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
@@ -404,6 +504,20 @@ async function checkLiveStatus() {
                 const client = await initializeHolodexClient();
                 return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 5 });
             }),
+            getCachedOrFetch(ORIGINAL_SONGS_CACHE_KEY, async () => {
+                const client = await initializeHolodexClient();
+                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
+                    limit: 50,
+                    topic: 'Original_Song'
+                });
+            }),
+            getCachedOrFetch(COVER_SONGS_CACHE_KEY, async () => {
+                const client = await initializeHolodexClient();
+                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
+                    limit: 50,
+                    topic: 'Music_Cover'
+                });
+            }),
             getCachedOrFetch('tweets', getTweets)
         ]);
 
@@ -411,7 +525,7 @@ async function checkLiveStatus() {
         updateCacheStatus();
 
         // Add this debug log
-        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, clipVideos, tweets });
+        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets });
 
         // Filter out live and upcoming streams from recent videos
         const filteredRecentVideos = recentVideos
@@ -887,32 +1001,99 @@ async function checkLiveStatus() {
             }
 
             // Add music playlist section
+            if (originalSongs.length > 0) {
+                html += `
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
+                    </div>
+                `;
+                html += `
+                    <div class="grid-container mb-12">
+                        <div class="scroll-container">
+                            ${originalSongs.map(song => `
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
+                                    <div class="thumbnail-container">
+                                        <img class="stream-thumbnail"
+                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
+                                             onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
+                                             alt="Song thumbnail">
+                                    </div>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                            Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
+                                        </p>
+                                    </div>
+                                    <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
+                                       target="_blank" 
+                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                        Listen Now
+                                    </a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add cover songs section
+            if (coverSongs.length > 0) {
+                html += `
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Cover Songs</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
+                    </div>
+                `;
+                html += `
+                    <div class="grid-container mb-12">
+                        <div class="scroll-container">
+                            ${coverSongs.map(song => `
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
+                                    <div class="thumbnail-container">
+                                        <img class="stream-thumbnail"
+                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
+                                             onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
+                                             alt="Song thumbnail">
+                                    </div>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                            Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
+                                        </p>
+                                    </div>
+                                    <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
+                                       target="_blank" 
+                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                        Listen Now
+                                    </a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add timeline section
             html += `
                 <div class="flex flex-col items-center mb-8">
-                    <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
+                    <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Career Timeline</h2>
+                    <span class="text-xs text-yellow-200 italic opacity-75">Major Milestones</span>
                 </div>
-            `;
-            html += `
                 <div class="grid-container mb-12">
-                    <div class="scroll-container">
-                        ${MUSIC_PLAYLIST_SONGS.map(song => `
-                            <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
-                                ${song.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
-                                <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
-                                <div class="thumbnail-container">
-                                    <img class="stream-thumbnail"
-                                         src="https://i.ytimg.com/vi/${song.videoId}/maxresdefault.jpg"
-                                         onerror="this.src='https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg'"
-                                         alt="Song thumbnail">
+                    <div class="relative px-4 py-8 max-w-4xl mx-auto">
+                        <div class="absolute left-1/2 transform -translate-x-1/2 h-full w-1 bg-yellow-500/30"></div>
+                        ${CAREER_TIMELINE.map((event, index) => `
+                            <div class="relative mb-8">
+                                <div class="flex items-center">
+                                    <div class="absolute left-1/2 transform -translate-x-1/2 w-4 h-4 bg-yellow-500 rounded-full"></div>
+                                    <div class="w-1/2 ${index % 2 === 0 ? 'pr-8 text-right' : 'pl-8 ml-auto'}">
+                                        <div class="card glass-effect rounded-xl p-4">
+                                            <div class="text-yellow-300 font-semibold mb-1">${formatDate(event.date)}</div>
+                                            <div class="text-yellow-100">${event.event}</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="space-y-2 mb-4">
-                                    <p class="text-sm md:text-base text-yellow-100 opacity-90">Published: ${formatDate(song.publishedAt)}</p>
-                                </div>
-                                <a href="https://youtube.com/watch?v=${song.videoId}" 
-                                   target="_blank" 
-                                   class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
-                                    Listen Now
-                                </a>
                             </div>
                         `).join('')}
                     </div>
@@ -983,8 +1164,8 @@ async function getTweets() {
     for (const proxy of corsProxies) {
         try {
             const response = await fetch(proxy + 
-                // encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`));
-                encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`));
+                encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`));
+                // encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`));
             if (!response.ok) {
                 console.warn(`Proxy ${proxy} failed with status: ${response.status}`);
                 continue;
