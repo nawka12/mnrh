@@ -1104,39 +1104,44 @@ async function checkLiveStatus() {
 
             // Add music playlist section
             if (originalSongs.length > 0) {
-                html += `
-                    <div class="flex flex-col items-center mb-8">
-                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
-                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
-                    </div>
-                `;
-                html += `
-                    <div class="grid-container mb-12">
-                        <div class="scroll-container">
-                            ${originalSongs.map(song => `
-                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
-                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
-                                    <div class="thumbnail-container">
-                                        <img class="stream-thumbnail"
-                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
-                                             onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
-                                             alt="Song thumbnail">
-                                    </div>
-                                    <div class="space-y-2 mb-4">
-                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">
-                                            Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
-                                        </p>
-                                    </div>
-                                    <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
-                                       target="_blank" 
-                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
-                                        Listen Now
-                                    </a>
-                                </div>
-                            `).join('')}
+                // Filter songs to only include those with "】" in the title
+                const filteredOriginalSongs = originalSongs.filter(song => song.title.includes('】'));
+                
+                if (filteredOriginalSongs.length > 0) {
+                    html += `
+                        <div class="flex flex-col items-center mb-8">
+                            <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
+                            <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
                         </div>
-                    </div>
-                `;
+                    `;
+                    html += `
+                        <div class="grid-container mb-12">
+                            <div class="scroll-container">
+                                ${filteredOriginalSongs.map(song => `
+                                    <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                        <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
+                                        <div class="thumbnail-container">
+                                            <img class="stream-thumbnail"
+                                                 src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
+                                                 onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
+                                                 alt="Song thumbnail">
+                                        </div>
+                                        <div class="space-y-2 mb-4">
+                                            <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                                Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
+                                            </p>
+                                        </div>
+                                        <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
+                                                   target="_blank" 
+                                                   class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                            Listen Now
+                                        </a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
             }
 
             // Add cover songs section
