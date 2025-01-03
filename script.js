@@ -182,18 +182,45 @@ function formatDateTime(dateString) {
     });
 }
 
+// Add this near the top with other constants
+const VERBOSE = false;
+
+// Add this debug logger function
+const debugLog = (...args) => {
+    if (VERBOSE) {
+        console.log(...args);
+    }
+};
+
+// Add this debug error logger function
+const debugError = (...args) => {
+    if (VERBOSE) {
+        console.error(...args);
+    } else if (args[0] instanceof Error) {
+        // Always log actual Error objects even in non-verbose mode
+        console.error(args[0]);
+    }
+};
+
+// Add this debug warning logger function
+const debugWarn = (...args) => {
+    if (VERBOSE) {
+        console.warn(...args);
+    }
+};
+
 async function initializeHolodexClient() {
-    console.log('initializeHolodexClient called');
+    debugLog('initializeHolodexClient called');
     // Always create a new client, regardless of existing one
     try {
-        console.log('Creating new Holodex client...');
+        debugLog('Creating new Holodex client...');
         holodexClient = new HolodexApiClient({
             apiKey: 'aa758d74-e7ac-46ef-9d99-f7ebc8d033a1'
         });
-        console.log('Holodex client created successfully');
+        debugLog('Holodex client created successfully');
         return holodexClient;
     } catch (error) {
-        console.error('Failed to initialize Holodex client:', error);
+        debugError('Failed to initialize Holodex client:', error);
         return null;
     }
 }
@@ -221,7 +248,7 @@ const cache = {
                 Date.now() - timestamp > CACHE_DURATION || 
                 !pageVisible || 
                 Date.now() - lastVisibilityChange > CACHE_DURATION) {
-                console.log(`Cache invalidated for ${key} due to staleness or visibility`);
+                debugLog(`Cache invalidated for ${key} due to staleness or visibility`);
                 localStorage.removeItem(key);
                 return null;
             }
@@ -246,11 +273,11 @@ const cache = {
                                     acc[key] = new Date(value);
                                     // Validate the date
                                     if (isNaN(acc[key].getTime())) {
-                                        console.warn(`Invalid date for ${key}:`, value);
+                                        debugWarn(`Invalid date for ${key}:`, value);
                                         acc[key] = null;
                                     }
                                 } catch (error) {
-                                    console.warn(`Error converting date for ${key}:`, error);
+                                    debugWarn(`Error converting date for ${key}:`, error);
                                     acc[key] = null;
                                 }
                             } else {
@@ -280,7 +307,7 @@ const cache = {
                             (availableAt > publishedAt ? availableAt : publishedAt) : 
                             (publishedAt || availableAt);
 
-                        console.log('Processing video:', {
+                        debugLog('Processing video:', {
                             videoId: item.videoId || item.raw?.id,
                             status: item.status,
                             dates: convertedDates,
@@ -301,7 +328,7 @@ const cache = {
             }
             return value;
         } catch (error) {
-            console.warn('Cache read error:', error);
+            debugWarn('Cache read error:', error);
             localStorage.removeItem(key); // Clear potentially corrupted cache
             return null;
         }
@@ -315,7 +342,7 @@ const cache = {
             };
             localStorage.setItem(key, JSON.stringify(item));
         } catch (error) {
-            console.warn('Cache write error:', error);
+            debugWarn('Cache write error:', error);
         }
     }
 };
@@ -409,11 +436,11 @@ async function checkLiveStatus() {
 
         const getCachedOrFetch = async (key, fetchFn) => {
             try {
-                console.log(`Fetching ${key}...`);
+                debugLog(`Fetching ${key}...`);
                 const cachedData = cache.get(key);
                 
                 if (cachedData) {
-                    console.log(`Found cached data for ${key}:`, {
+                    debugLog(`Found cached data for ${key}:`, {
                         sample: cachedData[0] ? {
                             videoId: cachedData[0].videoId,
                             title: cachedData[0].title,
@@ -430,14 +457,14 @@ async function checkLiveStatus() {
                 }
                 
                 if (key.includes('Videos')) {
-                    console.log(`Initializing client for ${key}`);
+                    debugLog(`Initializing client for ${key}`);
                     holodexClient = await initializeHolodexClient();
                     if (!holodexClient) {
                         throw new Error('Holodex client not initialized');
                     }
                 }
                 
-                console.log(`Fetching fresh data for ${key}`);
+                debugLog(`Fetching fresh data for ${key}`);
                 const rawData = await fetchFn();
                 
                 // Process the fresh data to ensure consistent date handling
@@ -470,7 +497,7 @@ async function checkLiveStatus() {
                     };
                 });
 
-                console.log(`Processed fresh data for ${key}:`, {
+                debugLog(`Processed fresh data for ${key}:`, {
                     sample: freshData[0] ? {
                         videoId: freshData[0].videoId,
                         title: freshData[0].title,
@@ -491,7 +518,7 @@ async function checkLiveStatus() {
                 cache.set(key, freshData);
                 return freshData;
             } catch (error) {
-                console.error(`Error in getCachedOrFetch for ${key}:`, error);
+                debugError(`Error in getCachedOrFetch for ${key}:`, error);
                 document.getElementById('liveStatus').innerHTML = `
                     <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                         <p class="text-red-400">Error loading data: ${error.message}</p>
@@ -537,7 +564,7 @@ async function checkLiveStatus() {
             getCachedOrFetch(COVER_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
                 
-                console.log('Fetching cover songs...');
+                debugLog('Fetching cover songs...');
                 
                 // Fetch covers from Moona's channel
                 const moonaCovers = await client.getVideos({ 
@@ -585,7 +612,7 @@ async function checkLiveStatus() {
                     ].filter(Boolean); // Remove null/undefined values
 
                     if (dates.length === 0) {
-                        console.warn('No valid date found for video:', video.title);
+                        debugWarn('No valid date found for video:', video.title);
                         return new Date(0); // Return oldest possible date if no valid date found
                     }
 
@@ -603,7 +630,7 @@ async function checkLiveStatus() {
                         const timeB = getLatestTime(b);
                         
                         // Add debug logging for sorting
-                        console.log(`Comparing:
+                        debugLog(`Comparing:
                             A: ${a.title} (${timeA.toISOString()})
                             B: ${b.title} (${timeB.toISOString()})
                             Result: ${timeB - timeA}`
@@ -612,7 +639,7 @@ async function checkLiveStatus() {
                         return timeB - timeA;
                     });
 
-                console.log('Final sorted covers:', allCovers.map(v => ({
+                debugLog('Final sorted covers:', allCovers.map(v => ({
                     title: v.title,
                     date: getLatestTime(v).toISOString(),
                     raw: {
@@ -630,9 +657,6 @@ async function checkLiveStatus() {
         // Move updateCacheStatus() here, after data is fetched
         updateCacheStatus();
 
-        // Add this debug log
-        console.log('Retrieved data:', { liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets });
-
         // Filter out live and upcoming streams from recent videos
         const filteredRecentVideos = recentVideos
             .filter(video => 
@@ -641,16 +665,13 @@ async function checkLiveStatus() {
             )
             .slice(0, 5);
 
-        // Add this debug log
-        console.log('Filtered videos:', filteredRecentVideos);
-
         // Get the latest activity time from videos, collabs, and tweets
         let latestActivity = null;
 
         // Check videos first
         if (filteredRecentVideos.length > 0) {
             const latestVideo = filteredRecentVideos[0];
-            console.log('Latest video data:', {
+            debugLog('Latest video data:', {
                 title: latestVideo.title,
                 publishedAt: latestVideo.publishedAt,
                 raw: {
@@ -667,7 +688,7 @@ async function checkLiveStatus() {
         // Check collabs and compare with current latest activity
         if (collabVideos.length > 0) {
             const latestCollab = collabVideos[0];
-            console.log('Latest collab data:', {
+            debugLog('Latest collab data:', {
                 title: latestCollab.title,
                 publishedAt: latestCollab.publishedAt,
                 raw: {
@@ -1377,15 +1398,11 @@ async function getTweets() {
                                 // Get URL from source element inside video
                                 const source = element.querySelector('source');
                                 originalUrl = source?.getAttribute('src') || '';
-                                console.log('Video source URL:', originalUrl); // Debug log
                                 
                                 // Extract video filename from Nitter URL
                                 const videoMatch = originalUrl.match(/video\.twimg\.com%2Ftweet_video%2F([^.]+\.mp4)/);
-                                console.log('Video match:', videoMatch); // Debug log
-                                
                                 if (videoMatch) {
                                     const videoUrl = `https://video.twimg.com/tweet_video/${videoMatch[1]}`;
-                                    console.log('Converted video URL:', videoUrl); // Debug log
                                     return {
                                         type: 'video',
                                         url: videoUrl
@@ -1482,14 +1499,14 @@ async function safeCheckLiveStatus() {
     try {
         // Only proceed if page is visible
         if (!pageVisible) {
-            console.log('Page is not visible, skipping status check');
+            debugLog('Page is not visible, skipping status check');
             return;
         }
 
         // Check if we've been hidden for too long
         const timeSinceVisibilityChange = Date.now() - lastVisibilityChange;
         if (timeSinceVisibilityChange > UPDATE_INTERVAL) {
-            console.log('Long period of inactivity detected, forcing cache refresh...');
+            debugLog('Long period of inactivity detected, forcing cache refresh...');
             await window.forceCacheRefresh();
             return;
         }
@@ -1502,7 +1519,7 @@ async function safeCheckLiveStatus() {
         // Update last check time after successful update
         lastUpdateTime = new Date();
     } catch (error) {
-        console.error('Failed to check live status:', error);
+        debugError('Failed to check live status:', error);
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                 <p class="text-red-400">Error checking live status: ${error.message}</p>
@@ -1632,7 +1649,7 @@ function handleTouchEnd() {
 
 // Update the initializeApp function to include pull-to-refresh
 async function initializeApp() {
-    console.log('Initializing app...');
+    debugLog('Initializing app...');
     try {
         // Initialize pull-to-refresh
         initializePullToRefresh();
@@ -1641,23 +1658,23 @@ async function initializeApp() {
         document.addEventListener('visibilitychange', handleVisibilityChange);
         
         // Initialize the Holodex client first
-        console.log('Initializing Holodex client...');
+        debugLog('Initializing Holodex client...');
         holodexClient = await initializeHolodexClient();
-        console.log('Holodex client initialized:', holodexClient);
+        debugLog('Holodex client initialized:', holodexClient);
         
         if (!holodexClient) {
             throw new Error('Failed to initialize Holodex client');
         }
         
         // Initial status check
-        console.log('Starting initial live status check...');
+        debugLog('Starting initial live status check...');
         await safeCheckLiveStatus();
         
         // Set up interval for auto-refresh
         const autoRefreshInterval = setInterval(async () => {
             const now = new Date();
             if (!lastUpdateTime || (now - lastUpdateTime) >= UPDATE_INTERVAL) {
-                console.log('Running auto-refresh...');
+                debugLog('Running auto-refresh...');
                 await safeCheckLiveStatus();
             }
         }, 60000); // Check every minute
@@ -1669,7 +1686,7 @@ async function initializeApp() {
             if (window.timeCounterInterval) clearInterval(window.timeCounterInterval);
         });
     } catch (error) {
-        console.error('App initialization failed:', error);
+        debugError('App initialization failed:', error);
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-red-50 border-2 border-red-500 rounded-lg p-6">
                 <p class="text-red-600">Failed to initialize application: ${error.message}</p>
@@ -1681,7 +1698,7 @@ async function initializeApp() {
 // Update the force refresh function
 window.forceCacheRefresh = async () => {
     try {
-        console.log('Starting aggressive cache clear...');
+        debugLog('Starting aggressive cache clear...');
         
         // Clear all localStorage
         localStorage.clear();
@@ -1699,22 +1716,22 @@ window.forceCacheRefresh = async () => {
             window.timeCounterInterval = null;
         }
         
-        console.log('Reinitializing Holodex client...');
+        debugLog('Reinitializing Holodex client...');
         holodexClient = await initializeHolodexClient();
         
         if (!holodexClient) {
             throw new Error('Failed to reinitialize Holodex client');
         }
         
-        console.log('Starting fresh status check...');
+        debugLog('Starting fresh status check...');
         await checkLiveStatus();
         
         // Update the cache status display
         updateCacheStatus();
         
-        console.log('Force refresh completed successfully');
+        debugLog('Force refresh completed successfully');
     } catch (error) {
-        console.error('Force refresh failed:', error);
+        debugError('Force refresh failed:', error);
         // Show error to user
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
