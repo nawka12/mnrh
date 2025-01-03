@@ -204,16 +204,24 @@ const TWITTER_USERNAME = 'moonahoshinova';
 let lastUpdateTime = null;
 const UPDATE_INTERVAL = 1 * 60 * 1000; // 1 minutes in milliseconds
 
-const CACHE_DURATION = 1 * 60 * 1000; // 1 minutes in milliseconds
+// Update the cache duration to be shorter
+const CACHE_DURATION = 30 * 1000; // 30 seconds in milliseconds
 
+// Update the cache object's get method to be more strict
 const cache = {
     get: (key) => {
         try {
             const item = localStorage.getItem(key);
             if (!item) return null;
 
-            const { value, timestamp, fetchTime } = JSON.parse(item);
-            if (Date.now() - timestamp > CACHE_DURATION) {
+            const { value, timestamp } = JSON.parse(item);
+            
+            // Add additional staleness checks
+            if (!timestamp || 
+                Date.now() - timestamp > CACHE_DURATION || 
+                !pageVisible || 
+                Date.now() - lastVisibilityChange > CACHE_DURATION) {
+                console.log(`Cache invalidated for ${key} due to staleness or visibility`);
                 localStorage.removeItem(key);
                 return null;
             }
@@ -294,6 +302,7 @@ const cache = {
             return value;
         } catch (error) {
             console.warn('Cache read error:', error);
+            localStorage.removeItem(key); // Clear potentially corrupted cache
             return null;
         }
     },
@@ -481,6 +490,10 @@ async function checkLiveStatus() {
                 document.getElementById('liveStatus').innerHTML = `
                     <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                         <p class="text-red-400">Error loading data: ${error.message}</p>
+                        <button onclick="window.location.reload()" 
+                                class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                            Reload Page
+                        </button>
                     </div>
                 `;
                 return [];
@@ -513,10 +526,99 @@ async function checkLiveStatus() {
             }),
             getCachedOrFetch(COVER_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
-                    limit: 50,
-                    topic: 'Music_Cover'
+                
+                console.log('Fetching cover songs...');
+                
+                // Define getLatestTime helper function
+                const getLatestTime = (video) => {
+                    // Try all possible date fields
+                    const dates = [
+                        video.published_at,
+                        video.available_at,
+                        video.start_scheduled,
+                        video.start_actual,
+                        // Also try nested fields
+                        video.raw?.published_at,
+                        video.raw?.available_at,
+                        video.raw?.start_scheduled,
+                        video.raw?.start_actual
+                    ].filter(Boolean); // Remove null/undefined values
+
+                    if (dates.length === 0) {
+                        console.warn('No valid date found for video:', video.title);
+                        return new Date(0); // Return oldest possible date if no valid date found
+                    }
+
+                    // Convert all dates to Date objects
+                    const dateTimes = dates.map(d => new Date(d));
+                    
+                    // Return the most recent date
+                    return new Date(Math.max(...dateTimes.map(d => d.getTime())));
+                };
+
+                // Fetch covers from Moona's channel
+                const moonaCovers = await client.getVideos({ 
+                    channel_id: MOONA_CHANNEL_ID,
+                    topic: 'Music_Cover',
+                    limit: 25,
+                    sort: 'available_at',
+                    order: 'desc'
                 });
+                console.log('Moona covers:', moonaCovers.map(v => ({
+                    title: v.title,
+                    date: v.available_at || v.published_at,
+                    raw: {
+                        published_at: v.published_at,
+                        available_at: v.available_at,
+                        start_scheduled: v.start_scheduled
+                    }
+                })));
+
+                // Fetch covers where Moona is mentioned
+                const mentionedCovers = await client.getVideos({ 
+                    mentioned_channel_id: MOONA_CHANNEL_ID,
+                    topic: 'Music_Cover',
+                    limit: 25,
+                    sort: 'available_at',
+                    order: 'desc'
+                });
+                console.log('Mentioned covers:', mentionedCovers.map(v => ({
+                    title: v.title,
+                    date: v.available_at || v.published_at,
+                    raw: {
+                        published_at: v.published_at,
+                        available_at: v.available_at,
+                        start_scheduled: v.start_scheduled
+                    }
+                })));
+
+                // Combine all covers and sort them together
+                const allCovers = [...moonaCovers, ...mentionedCovers]
+                    .sort((a, b) => {
+                        const timeA = getLatestTime(a);
+                        const timeB = getLatestTime(b);
+                        
+                        // Add debug logging for sorting
+                        console.log(`Comparing:
+                            A: ${a.title} (${timeA.toISOString()})
+                            B: ${b.title} (${timeB.toISOString()})
+                            Result: ${timeB - timeA}`
+                        );
+                        
+                        return timeB - timeA;
+                    });
+
+                console.log('Final sorted covers:', allCovers.map(v => ({
+                    title: v.title,
+                    date: getLatestTime(v).toISOString(),
+                    raw: {
+                        published_at: v.published_at,
+                        available_at: v.available_at,
+                        start_scheduled: v.start_scheduled
+                    }
+                })));
+
+                return allCovers;
             }),
             getCachedOrFetch('tweets', getTweets)
         ]);
@@ -1145,7 +1247,11 @@ async function checkLiveStatus() {
         console.error('Error:', error);
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-400">Error checking live status</p>
+                <p class="text-red-400">Error checking live status: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
             </div>
         `;
         document.getElementById('timeCounter').textContent = 'Error loading time';
@@ -1338,34 +1444,40 @@ function formatTweetText(text) {
         .trim();
 }
 
-// Update the force refresh function
-window.forceCacheRefresh = async () => {
-    try {
-        // Clear all cached data
-        ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY].forEach(key => {
-            console.log(`Clearing cache for ${key}`);
-            localStorage.removeItem(key);
-        });
-        
-        // Reset the last update time to force immediate check
-        lastUpdateTime = null;
-        
-        console.log('Starting force refresh...');
-        // Force an immediate check with cache bypass
-        await safeCheckLiveStatus();
-        
-        // Update the cache status display
-        updateCacheStatus();
-        
-        console.log('Force refresh completed');
-    } catch (error) {
-        console.error('Force refresh failed:', error);
-    }
-};
+// Add these variables near the top with other constants
+let pageVisible = true;
+let lastVisibilityChange = Date.now();
 
-// Update the safe status checking function
+// Add this function near the top with other initialization functions
+function handleVisibilityChange() {
+    if (document.hidden) {
+        pageVisible = false;
+    } else {
+        pageVisible = true;
+        lastVisibilityChange = Date.now();
+        // Force an immediate refresh when page becomes visible
+        console.log('Page became visible, forcing refresh...');
+        window.forceCacheRefresh();
+    }
+}
+
+// Update the safeCheckLiveStatus function
 async function safeCheckLiveStatus() {
     try {
+        // Only proceed if page is visible
+        if (!pageVisible) {
+            console.log('Page is not visible, skipping status check');
+            return;
+        }
+
+        // Check if we've been hidden for too long
+        const timeSinceVisibilityChange = Date.now() - lastVisibilityChange;
+        if (timeSinceVisibilityChange > UPDATE_INTERVAL) {
+            console.log('Long period of inactivity detected, forcing cache refresh...');
+            await window.forceCacheRefresh();
+            return;
+        }
+
         // Reset Holodex client on each check to ensure fresh connection
         holodexClient = await initializeHolodexClient();
         
@@ -1378,16 +1490,140 @@ async function safeCheckLiveStatus() {
         document.getElementById('liveStatus').innerHTML = `
             <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
                 <p class="text-red-400">Error checking live status: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
             </div>
         `;
         document.getElementById('timeCounter').textContent = 'Error loading time';
     }
 }
 
-// Update the initialization function
+// Add these constants near the top
+const PULL_THRESHOLD = 80; // pixels
+let touchStartY = 0;
+let pullDistance = 0;
+let isPulling = false;
+let refreshIndicator = null;
+
+// Add this function near other initialization code
+function initializePullToRefresh() {
+    // Create refresh indicator element with improved styling
+    refreshIndicator = document.createElement('div');
+    refreshIndicator.className = 'fixed left-0 right-0 flex items-center justify-center -translate-y-full transition-all duration-200 ease-out z-50 opacity-0';
+    refreshIndicator.innerHTML = `
+        <div class="bg-yellow-500 text-purple-900 p-3 rounded-full shadow-lg transform transition-all duration-200 ease-out">
+            <span class="pull-text">
+                <svg class="w-6 h-6 transform rotate-0 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+            </span>
+            <span class="refreshing-text hidden">
+                <svg class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </span>
+        </div>
+    `;
+    document.body.appendChild(refreshIndicator);
+
+    // Add touch event listeners
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+}
+
+// Add these touch event handlers
+function handleTouchStart(e) {
+    // Only enable pull to refresh when at top of page
+    if (window.scrollY === 0) {
+        touchStartY = e.touches[0].clientY;
+        isPulling = true;
+    }
+}
+
+function handleTouchMove(e) {
+    if (!isPulling) return;
+
+    pullDistance = Math.max(0, e.touches[0].clientY - touchStartY);
+    
+    // Prevent default scrolling while pulling
+    if (pullDistance > 0) {
+        e.preventDefault();
+    }
+
+    // Add resistance to the pull (square root function for natural feel)
+    const resistedPull = Math.sqrt(pullDistance) * 8;
+    
+    // Only show indicator when pulling down
+    if (pullDistance > 0) {
+        refreshIndicator.style.opacity = '1';
+        refreshIndicator.style.transform = `translateY(${Math.min(resistedPull, PULL_THRESHOLD * 1.2)}px)`;
+        
+        // Rotate arrow based on pull progress
+        const arrow = refreshIndicator.querySelector('.pull-text svg');
+        const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+        arrow.style.transform = `rotate(${180 * progress}deg)`;
+    } else {
+        refreshIndicator.style.opacity = '0';
+        refreshIndicator.style.transform = 'translateY(-100%)';
+    }
+}
+
+function handleTouchEnd() {
+    if (!isPulling) return;
+    isPulling = false;
+
+    if (pullDistance >= PULL_THRESHOLD) {
+        // Show refreshing state with smooth transition
+        const pullText = refreshIndicator.querySelector('.pull-text');
+        const refreshingText = refreshIndicator.querySelector('.refreshing-text');
+        
+        pullText.classList.add('hidden');
+        refreshingText.classList.remove('hidden');
+
+        // Keep indicator visible during refresh
+        refreshIndicator.style.opacity = '1';
+        refreshIndicator.style.transform = `translateY(${PULL_THRESHOLD * 0.5}px)`;
+
+        // Trigger refresh
+        window.forceCacheRefresh().finally(() => {
+            // Smooth reset after refresh
+            refreshIndicator.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+            refreshIndicator.style.transform = 'translateY(-100%)';
+            refreshIndicator.style.opacity = '0';
+            
+            setTimeout(() => {
+                refreshingText.classList.add('hidden');
+                pullText.classList.remove('hidden');
+                refreshIndicator.style.transition = ''; // Reset transition
+            }, 300);
+        });
+    } else {
+        // Smooth reset without refreshing
+        refreshIndicator.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+        refreshIndicator.style.transform = 'translateY(-100%)';
+        refreshIndicator.style.opacity = '0';
+        setTimeout(() => {
+            refreshIndicator.style.transition = ''; // Reset transition
+        }, 300);
+    }
+
+    pullDistance = 0;
+}
+
+// Update the initializeApp function to include pull-to-refresh
 async function initializeApp() {
     console.log('Initializing app...');
     try {
+        // Initialize pull-to-refresh
+        initializePullToRefresh();
+        
+        // Add visibility change listener
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
         // Initialize the Holodex client first
         console.log('Initializing Holodex client...');
         holodexClient = await initializeHolodexClient();
@@ -1412,6 +1648,7 @@ async function initializeApp() {
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
             if (window.timeCounterInterval) clearInterval(window.timeCounterInterval);
         });
@@ -1424,6 +1661,56 @@ async function initializeApp() {
         `;
     }
 }
+
+// Update the force refresh function
+window.forceCacheRefresh = async () => {
+    try {
+        console.log('Starting aggressive cache clear...');
+        
+        // Clear all localStorage
+        localStorage.clear();
+        
+        // Reset all state variables
+        lastUpdateTime = null;
+        lastVisibilityChange = Date.now();
+        
+        // Reset the Holodex client
+        holodexClient = null;
+        
+        // Clear any existing intervals
+        if (window.timeCounterInterval) {
+            clearInterval(window.timeCounterInterval);
+            window.timeCounterInterval = null;
+        }
+        
+        console.log('Reinitializing Holodex client...');
+        holodexClient = await initializeHolodexClient();
+        
+        if (!holodexClient) {
+            throw new Error('Failed to reinitialize Holodex client');
+        }
+        
+        console.log('Starting fresh status check...');
+        await checkLiveStatus();
+        
+        // Update the cache status display
+        updateCacheStatus();
+        
+        console.log('Force refresh completed successfully');
+    } catch (error) {
+        console.error('Force refresh failed:', error);
+        // Show error to user
+        document.getElementById('liveStatus').innerHTML = `
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Error refreshing data: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
+            </div>
+        `;
+    }
+};
 
 // Wait for DOM to be fully loaded, then initialize
 document.addEventListener('DOMContentLoaded', initializeApp);
