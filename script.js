@@ -557,9 +557,17 @@ async function checkLiveStatus() {
                     order: 'desc'
                 });
 
-                // Filter out missing videos before combining and sorting
-                const filteredMoonaCovers = moonaCovers.filter(video => video.status !== 'missing');
-                const filteredMentionedCovers = mentionedCovers.filter(video => video.status !== 'missing');
+                // Filter out missing videos and unwanted titles
+                const filteredMoonaCovers = moonaCovers.filter(video => 
+                    video.status !== 'missing' && 
+                    !video.title.includes('Amaya Miyu') && 
+                    !video.title.includes('Rora Meeza')
+                );
+                const filteredMentionedCovers = mentionedCovers.filter(video => 
+                    video.status !== 'missing' && 
+                    !video.title.includes('Amaya Miyu') && 
+                    !video.title.includes('Rora Meeza')
+                );
 
                 // Define getLatestTime helper function
                 const getLatestTime = (video) => {
