@@ -508,32 +508,59 @@ async function checkLiveStatus() {
         const [liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets] = await Promise.all([
             getCachedOrFetch('liveVideos', async () => {
                 const client = await initializeHolodexClient();
-                return client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
+                const videos = await client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
+                return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch('recentVideos', async () => {
                 const client = await initializeHolodexClient();
-                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { limit: 15 });
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { limit: 15 });
+                return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(COLLABS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 5 });
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 5 });
+                return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(CLIPS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 5 });
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 5 });
+                return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(ORIGINAL_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                return client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
                     limit: 50,
                     topic: 'Original_Song'
                 });
+                return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(COVER_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
                 
                 console.log('Fetching cover songs...');
                 
+                // Fetch covers from Moona's channel
+                const moonaCovers = await client.getVideos({ 
+                    channel_id: MOONA_CHANNEL_ID,
+                    topic: 'Music_Cover',
+                    limit: 25,
+                    sort: 'available_at',
+                    order: 'desc'
+                });
+
+                // Fetch covers where Moona is mentioned
+                const mentionedCovers = await client.getVideos({ 
+                    mentioned_channel_id: MOONA_CHANNEL_ID,
+                    topic: 'Music_Cover',
+                    limit: 25,
+                    sort: 'available_at',
+                    order: 'desc'
+                });
+
+                // Filter out missing videos before combining and sorting
+                const filteredMoonaCovers = moonaCovers.filter(video => video.status !== 'missing');
+                const filteredMentionedCovers = mentionedCovers.filter(video => video.status !== 'missing');
+
                 // Define getLatestTime helper function
                 const getLatestTime = (video) => {
                     // Try all possible date fields
@@ -561,44 +588,8 @@ async function checkLiveStatus() {
                     return new Date(Math.max(...dateTimes.map(d => d.getTime())));
                 };
 
-                // Fetch covers from Moona's channel
-                const moonaCovers = await client.getVideos({ 
-                    channel_id: MOONA_CHANNEL_ID,
-                    topic: 'Music_Cover',
-                    limit: 25,
-                    sort: 'available_at',
-                    order: 'desc'
-                });
-                console.log('Moona covers:', moonaCovers.map(v => ({
-                    title: v.title,
-                    date: v.available_at || v.published_at,
-                    raw: {
-                        published_at: v.published_at,
-                        available_at: v.available_at,
-                        start_scheduled: v.start_scheduled
-                    }
-                })));
-
-                // Fetch covers where Moona is mentioned
-                const mentionedCovers = await client.getVideos({ 
-                    mentioned_channel_id: MOONA_CHANNEL_ID,
-                    topic: 'Music_Cover',
-                    limit: 25,
-                    sort: 'available_at',
-                    order: 'desc'
-                });
-                console.log('Mentioned covers:', mentionedCovers.map(v => ({
-                    title: v.title,
-                    date: v.available_at || v.published_at,
-                    raw: {
-                        published_at: v.published_at,
-                        available_at: v.available_at,
-                        start_scheduled: v.start_scheduled
-                    }
-                })));
-
                 // Combine all covers and sort them together
-                const allCovers = [...moonaCovers, ...mentionedCovers]
+                const allCovers = [...filteredMoonaCovers, ...filteredMentionedCovers]
                     .sort((a, b) => {
                         const timeA = getLatestTime(a);
                         const timeB = getLatestTime(b);
