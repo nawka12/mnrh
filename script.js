@@ -392,12 +392,17 @@ async function checkLiveStatus() {
         lastUpdateTime = now;
 
         async function getThumbnailUrl(videoId) {
-            if (!videoId) return '';
             try {
+                // Try maxresdefault first
                 const maxRes = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
                 const response = await fetch(maxRes, { method: 'HEAD' });
-                return response.ok ? maxRes : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+                if (response.ok) {
+                    return maxRes;
+                }
+                // If maxresdefault fails, return hqdefault without checking
+                return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
             } catch (error) {
+                // If any error occurs, return hqdefault
                 return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
             }
         }
@@ -825,9 +830,10 @@ async function checkLiveStatus() {
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${title}</h3>
                             <div class="thumbnail-container">
                                 <img class="stream-thumbnail"
-                                     src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg"
-                                     onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                     alt="Stream thumbnail">
+                                     src="https://i.ytimg.com/vi/${videoId}/hqdefault.jpg"
+                                     data-video-id="${videoId}"
+                                     onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg';"
+                                     alt="Video thumbnail">
                             </div>
                             <div class="space-y-2 mb-4">
                                 <p class="text-sm md:text-base text-yellow-100 opacity-90">${actualStart ? formatDateTime(actualStart) : 'N/A'}</p>
@@ -868,9 +874,10 @@ async function checkLiveStatus() {
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${title}</h3>
                             <div class="thumbnail-container">
                                 <img class="stream-thumbnail"
-                                     src="https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg"
-                                     onerror="this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg'"
-                                     alt="Stream thumbnail">
+                                     src="https://i.ytimg.com/vi/${videoId}/hqdefault.jpg"
+                                     data-video-id="${videoId}"
+                                     onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${videoId}/hqdefault.jpg';"
+                                     alt="Video thumbnail">
                             </div>
                             <div class="space-y-2 mb-4">
                                 <p class="text-sm md:text-base text-yellow-100 opacity-90">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
@@ -905,8 +912,9 @@ async function checkLiveStatus() {
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
                             <div class="thumbnail-container">
                                 <img class="stream-thumbnail"
-                                     src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
-                                     onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
+                                     src="https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg"
+                                     data-video-id="${video.videoId}"
+                                     onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg';"
                                      alt="Video thumbnail">
                             </div>
                             <div class="space-y-2 mb-4">
@@ -1033,9 +1041,10 @@ async function checkLiveStatus() {
                                     <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
                                     <div class="thumbnail-container">
                                         <img class="stream-thumbnail"
-                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
-                                             onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                             alt="Collab thumbnail">
+                                             src="https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg"
+                                             data-video-id="${video.videoId}"
+                                             onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg';"
+                                             alt="Video thumbnail">
                                     </div>
                                     <div class="space-y-2 mb-4">
                                         <p class="text-sm md:text-base text-yellow-100 opacity-90">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
@@ -1076,9 +1085,10 @@ async function checkLiveStatus() {
                                     <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
                                     <div class="thumbnail-container">
                                         <img class="stream-thumbnail"
-                                             src="https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
-                                             onerror="this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg'"
-                                             alt="Clip thumbnail">
+                                             src="https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg"
+                                             data-video-id="${video.videoId}"
+                                             onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg';"
+                                             alt="Video thumbnail">
                                     </div>
                                     <div class="space-y-2 mb-4">
                                         <p class="text-sm md:text-base text-yellow-100 opacity-90">Latest activity: ${video.publishedAt ? formatDateTime(video.publishedAt) : 'N/A'}</p>
@@ -1122,8 +1132,9 @@ async function checkLiveStatus() {
                                         <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
                                         <div class="thumbnail-container">
                                             <img class="stream-thumbnail"
-                                                 src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
-                                                 onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
+                                                 src="https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg"
+                                                 data-video-id="${song.videoId || song.id}"
+                                                 onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg';"
                                                  alt="Song thumbnail">
                                         </div>
                                         <div class="space-y-2 mb-4">
@@ -1160,8 +1171,9 @@ async function checkLiveStatus() {
                                     <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
                                     <div class="thumbnail-container">
                                         <img class="stream-thumbnail"
-                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/maxresdefault.jpg"
-                                             onerror="this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg'"
+                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg"
+                                             data-video-id="${song.videoId || song.id}"
+                                             onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg';"
                                              alt="Song thumbnail">
                                     </div>
                                     <div class="space-y-2 mb-4">
