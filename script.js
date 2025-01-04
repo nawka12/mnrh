@@ -182,8 +182,35 @@ function formatDateTime(dateString) {
     });
 }
 
+// Add this helper function near the other helper functions (like formatDate and formatDateTime)
+function getLatestTime(video) {
+    // Try all possible date fields
+    const dates = [
+        video.published_at,
+        video.available_at,
+        video.start_scheduled,
+        video.start_actual,
+        // Also try nested fields
+        video.raw?.published_at,
+        video.raw?.available_at,
+        video.raw?.start_scheduled,
+        video.raw?.start_actual
+    ].filter(Boolean); // Remove null/undefined values
+
+    if (dates.length === 0) {
+        debugWarn('No valid date found for video:', video.title);
+        return new Date(0); // Return oldest possible date if no valid date found
+    }
+
+    // Convert all dates to Date objects
+    const dateTimes = dates.map(d => new Date(d));
+    
+    // Return the most recent date
+    return new Date(Math.max(...dateTimes.map(d => d.getTime())));
+}
+
 // Add this near the top with other constants
-const VERBOSE = false;
+const VERBOSE = true;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -555,11 +582,139 @@ async function checkLiveStatus() {
             }),
             getCachedOrFetch(ORIGINAL_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
+                
+                debugLog('Fetching original songs...');
+                
+                // Fetch original songs from Moona's channel
+                const moonaOriginals = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'videos', { 
                     limit: 50,
                     topic: 'Original_Song'
                 });
-                return videos.filter(video => video.status !== 'missing');
+
+                // Fetch original songs where Moona is mentioned
+                const mentionedOriginals = await client.getVideos({ 
+                    mentioned_channel_id: MOONA_CHANNEL_ID,
+                    topic: 'Original_Song',
+                    limit: 25,
+                    sort: 'available_at',
+                    order: 'desc'
+                });
+
+                // Filter out missing videos and unwanted titles
+                const filteredMoonaOriginals = moonaOriginals.filter(video => 
+                    video.status !== 'missing' &&
+                    video.videoId !== 'opaixR7ZpIE' &&
+                    video.videoId !== 'Lbv8E-rzVW8' &&
+                    video.videoId !== 'frcPP_RH6yI'
+                );
+                const filteredMentionedOriginals = mentionedOriginals.filter(video => 
+                    video.status !== 'missing' &&
+                    video.videoId !== 'opaixR7ZpIE' &&
+                    video.videoId !== 'Lbv8E-rzVW8' &&
+                    video.videoId !== 'frcPP_RH6yI'
+                );
+
+                // Combine all originals
+                const allOriginals = [...filteredMoonaOriginals, ...filteredMentionedOriginals];
+
+                // Group videos by similar titles
+                const groupedVideos = allOriginals.reduce((groups, video) => {
+                    // Clean the title for grouping
+                    const cleanTitle = video.title
+                        .replace(/[\[【].*?[\]】]/g, '') // Remove text in brackets
+                        .replace(/(MV|Official|Music Video|Video|Music|Animated)/gi, '') // Remove common markers
+                        .replace(/\(.*?(remastered|ver|version).*?\)/gi, '') // Remove remastered/version variations in parentheses
+                        .replace(/（.*?(remastered|ver|version).*?）/gi, '') // Remove remastered/version variations in Japanese parentheses
+                        .replace(/\(.*?\)/g, '') // Remove remaining text in parentheses
+                        .replace(/（.*?）/g, '') // Remove remaining Japanese parentheses
+                        .replace(/feat\.|ft\./gi, '') // Remove featuring markers
+                        .replace(/moona\s+hoshinova\s*[-–]\s*/gi, '') // Remove "Moona Hoshinova -"
+                        .replace(/\s*[-–]\s*moona\s+hoshinova/gi, '') // Remove "- Moona Hoshinova"
+                        .replace(/moona\s+hoshinova/gi, '') // Remove just "Moona Hoshinova"
+                        .replace(/\s*[-–]\s*/g, '') // Remove dashes with optional spaces
+                        .replace(/\s+/g, ' ') // Normalize whitespace
+                        .replace(/instrumental/gi, '') // Remove "instrumental"
+                        .replace(/remastered(\s+ver(sion)?)?/gi, '') // Remove standalone remastered mentions
+                        .replace(/^['"]/g, '') // Remove leading quotes
+                        .replace(/['"]$/g, '') // Remove trailing quotes
+                        .trim()
+                        .toLowerCase();
+
+                    debugLog(`Title cleaning: "${video.title}" -> "${cleanTitle}"`);
+
+                    if (!groups[cleanTitle]) {
+                        groups[cleanTitle] = [];
+                    }
+                    groups[cleanTitle].push(video);
+                    return groups;
+                }, {});
+
+                // For each group, select the best version
+                const dedupedVideos = Object.values(groupedVideos).map(group => {
+                    // Sort versions by priority:
+                    // 1. MV versions (with 】)
+                    // 2. Original versions (with "Original Song" or similar markers)
+                    // 3. Non-instrumental versions
+                    // 4. Non-remastered versions
+                    // 5. Most recent version
+                    return group.sort((a, b) => {
+                        // Prefer MV versions
+                        const aMV = a.title.includes('】');
+                        const bMV = b.title.includes('】');
+                        if (aMV && !bMV) return -1;
+                        if (!aMV && bMV) return 1;
+
+                        // Then prefer versions with "Original Song" or similar markers
+                        const aOriginal = a.title.match(/Original Song|Official|MV/i);
+                        const bOriginal = b.title.match(/Original Song|Official|MV/i);
+                        if (aOriginal && !bOriginal) return -1;
+                        if (!aOriginal && bOriginal) return 1;
+
+                        // Then prefer non-instrumental versions
+                        const aInst = a.title.toLowerCase().includes('instrumental');
+                        const bInst = b.title.toLowerCase().includes('instrumental');
+                        if (!aInst && bInst) return -1;
+                        if (aInst && !bInst) return 1;
+
+                        // Then prefer non-remastered versions
+                        const aRemaster = a.title.toLowerCase().match(/remastered|remaster\s+ver/);
+                        const bRemaster = b.title.toLowerCase().match(/remastered|remaster\s+ver/);
+                        if (!aRemaster && bRemaster) return -1;
+                        if (aRemaster && !bRemaster) return 1;
+
+                        // Finally, sort by date
+                        const timeA = getLatestTime(a);
+                        const timeB = getLatestTime(b);
+                        return timeB - timeA;
+                    })[0]; // Take the first (highest priority) version
+                });
+
+                // Sort the final list by date
+                const sortedVideos = dedupedVideos.sort((a, b) => {
+                    const timeA = getLatestTime(a);
+                    const timeB = getLatestTime(b);
+                    
+                    debugLog(`Comparing originals:
+                        A: ${a.title} (${timeA.toISOString()})
+                        B: ${b.title} (${timeB.toISOString()})
+                        Result: ${timeB - timeA}`
+                    );
+                    
+                    return timeB - timeA;
+                });
+
+                debugLog('Final sorted originals:', sortedVideos.map(v => ({
+                    title: v.title,
+                    date: getLatestTime(v).toISOString(),
+                    channel: v.channel?.name,
+                    raw: {
+                        published_at: v.published_at,
+                        available_at: v.available_at,
+                        start_scheduled: v.start_scheduled
+                    }
+                })));
+
+                return sortedVideos;
             }),
             getCachedOrFetch(COVER_SONGS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
@@ -595,33 +750,6 @@ async function checkLiveStatus() {
                     !video.title.includes('Amaya Miyu') && 
                     !video.title.includes('Rora Meeza')
                 );
-
-                // Define getLatestTime helper function
-                const getLatestTime = (video) => {
-                    // Try all possible date fields
-                    const dates = [
-                        video.published_at,
-                        video.available_at,
-                        video.start_scheduled,
-                        video.start_actual,
-                        // Also try nested fields
-                        video.raw?.published_at,
-                        video.raw?.available_at,
-                        video.raw?.start_scheduled,
-                        video.raw?.start_actual
-                    ].filter(Boolean); // Remove null/undefined values
-
-                    if (dates.length === 0) {
-                        debugWarn('No valid date found for video:', video.title);
-                        return new Date(0); // Return oldest possible date if no valid date found
-                    }
-
-                    // Convert all dates to Date objects
-                    const dateTimes = dates.map(d => new Date(d));
-                    
-                    // Return the most recent date
-                    return new Date(Math.max(...dateTimes.map(d => d.getTime())));
-                };
 
                 // Combine all covers and sort them together
                 const allCovers = [...filteredMoonaCovers, ...filteredMentionedCovers]
@@ -1134,45 +1262,43 @@ async function checkLiveStatus() {
 
             // Add music playlist section
             if (originalSongs.length > 0) {
-                // Filter songs to only include those with "】" in the title
-                const filteredOriginalSongs = originalSongs.filter(song => song.title.includes('】'));
-                
-                if (filteredOriginalSongs.length > 0) {
-                    html += `
-                        <div class="flex flex-col items-center mb-8">
-                            <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
-                            <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
-                        </div>
-                    `;
-                    html += `
-                        <div class="grid-container mb-12">
-                            <div class="scroll-container">
-                                ${filteredOriginalSongs.map(song => `
-                                    <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
-                                        <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
-                                        <div class="thumbnail-container">
-                                            <img class="stream-thumbnail"
-                                                 src="https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg"
-                                                 data-video-id="${song.videoId || song.id}"
-                                                 onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg';"
-                                                 alt="Song thumbnail">
-                                        </div>
-                                        <div class="space-y-2 mb-4">
-                                            <p class="text-sm md:text-base text-yellow-100 opacity-90">
-                                                Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
-                                            </p>
-                                        </div>
-                                        <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
-                                                   target="_blank" 
-                                                   class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
-                                            Listen Now
-                                        </a>
+                html += `
+                    <div class="flex flex-col items-center mb-8">
+                        <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Original Songs</h2>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Holodex</span>
+                    </div>
+                `;
+                html += `
+                    <div class="grid-container mb-12">
+                        <div class="scroll-container">
+                            ${originalSongs.map(song => `
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${song.title}</h3>
+                                    <div class="thumbnail-container">
+                                        <img class="stream-thumbnail"
+                                             src="https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg"
+                                             data-video-id="${song.videoId || song.id}"
+                                             onerror="this.onerror=null; this.src='https://i.ytimg.com/vi/${song.videoId || song.id}/hqdefault.jpg';"
+                                             alt="Song thumbnail">
                                     </div>
-                                `).join('')}
-                            </div>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                            Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
+                                        </p>
+                                        ${song.channel?.name ? 
+                                            `<p class="text-sm text-yellow-200">Channel: ${song.channel.name}</p>` : 
+                                            ''}
+                                    </div>
+                                    <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
+                                       target="_blank" 
+                                       class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                                        Listen Now
+                                    </a>
+                                </div>
+                            `).join('')}
                         </div>
-                    `;
-                }
+                    </div>
+                `;
             }
 
             // Add cover songs section
@@ -1200,6 +1326,9 @@ async function checkLiveStatus() {
                                         <p class="text-sm md:text-base text-yellow-100 opacity-90">
                                             Published: ${song.publishedAt ? formatDateTime(song.publishedAt) : 'N/A'}
                                         </p>
+                                        ${song.channel?.name ? 
+                                            `<p class="text-sm text-yellow-200">Channel: ${song.channel.name}</p>` : 
+                                            ''}
                                     </div>
                                     <a href="https://youtube.com/watch?v=${song.videoId || song.id}" 
                                        target="_blank" 
