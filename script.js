@@ -739,16 +739,18 @@ async function checkLiveStatus() {
                     order: 'desc'
                 });
 
-                // Filter out missing videos and unwanted titles
+                // Filter out missing videos, unwanted titles, and the specific AREA15 video
                 const filteredMoonaCovers = moonaCovers.filter(video => 
                     video.status !== 'missing' && 
                     !video.title.includes('Amaya Miyu') && 
-                    !video.title.includes('Rora Meeza')
+                    !video.title.includes('Rora Meeza') &&
+                    !video.title.includes('AREA15 Original Song Medley')  // Added this condition
                 );
                 const filteredMentionedCovers = mentionedCovers.filter(video => 
                     video.status !== 'missing' && 
                     !video.title.includes('Amaya Miyu') && 
-                    !video.title.includes('Rora Meeza')
+                    !video.title.includes('Rora Meeza') &&
+                    !video.title.includes('AREA15 Original Song Medley')  // Added this condition
                 );
 
                 // Combine all covers and sort them together
