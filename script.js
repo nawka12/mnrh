@@ -210,7 +210,7 @@ function getLatestTime(video) {
 }
 
 // Add this near the top with other constants
-const VERBOSE = true;
+const VERBOSE = false;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -1435,46 +1435,68 @@ async function getTweets() {
 
     for (const proxy of corsProxies) {
         try {
-            const response = await fetch(proxy + 
-                encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`));
-                // encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`));
-            if (!response.ok) {
-                console.warn(`Proxy ${proxy} failed with status: ${response.status}`);
+            // Fetch both RSS feeds
+            const [mainResponse, repliesResponse] = await Promise.all([
+                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`)),
+                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`))
+            ]);
+
+            if (!mainResponse.ok || !repliesResponse.ok) {
+                console.warn(`Proxy ${proxy} failed with status: ${mainResponse.status}/${repliesResponse.status}`);
                 continue;
             }
 
-            const text = await response.text();
+            // Parse both feeds
             const parser = new DOMParser();
-            const xml = parser.parseFromString(text, "text/xml");
-            
-            // Verify that we got valid XML
-            if (xml.getElementsByTagName('parsererror').length > 0) {
+            const [mainXml, repliesXml] = await Promise.all([
+                parser.parseFromString(await mainResponse.text(), "text/xml"),
+                parser.parseFromString(await repliesResponse.text(), "text/xml")
+            ]);
+
+            // Verify both XMLs are valid
+            if (mainXml.getElementsByTagName('parsererror').length > 0 || 
+                repliesXml.getElementsByTagName('parsererror').length > 0) {
                 console.warn(`Proxy ${proxy} returned invalid XML`);
                 continue;
             }
 
-            const items = xml.querySelectorAll('item');
-            if (!items || items.length === 0) {
-                console.warn(`Proxy ${proxy} returned no items`);
-                continue;
-            }
+            // Combine items from both feeds
+            const mainItems = Array.from(mainXml.querySelectorAll('item'));
+            const repliesItems = Array.from(repliesXml.querySelectorAll('item'));
+            const allItems = [...mainItems, ...repliesItems];
 
-            // Rest of the tweet processing code remains the same
+            // Use a Set to track unique tweet IDs
+            const seenIds = new Set();
             const tweets = [];
-            for (let i = 0; i < Math.min(5, items.length); i++) {
+
+            // Add debug logging for feed contents
+            debugLog(`Main feed items: ${mainItems.length}`);
+            debugLog(`Replies feed items: ${repliesItems.length}`);
+            debugLog(`Combined items: ${allItems.length}`);
+
+            for (const item of allItems) {
                 try {
-                    const item = items[i];
+                    const link = item.querySelector('link')?.textContent || '';
+                    const id = link.split('/status/')[1]?.split('#')[0];
+                    
+                    // Add debug logging for each item
+                    debugLog(`Processing tweet: ${link} (ID: ${id})`);
+                    
+                    // Skip if we've already processed this tweet
+                    if (!id || seenIds.has(id)) {
+                        debugLog(`Skipping duplicate or invalid tweet: ${id}`);
+                        continue;
+                    }
+                    seenIds.add(id);
+
+                    // Rest of your existing tweet processing code
                     const title = item.querySelector('title')?.textContent || '';
                     const creator = item.querySelector('creator')?.textContent || `@${TWITTER_USERNAME}`;
                     const description = item.querySelector('description')?.textContent || '';
-                    const link = item.querySelector('link')?.textContent || '';
                     const pubDate = item.querySelector('pubDate')?.textContent;
                     
                     if (!link || !pubDate) continue;
                     
-                    const id = link.split('/status/')[1]?.split('#')[0];
-                    if (!id) continue;
-
                     // Parse the description to extract text and links
                     const tempDiv = document.createElement('div');
                     tempDiv.innerHTML = description;
@@ -1575,13 +1597,18 @@ async function getTweets() {
                         timestamp: new Date(pubDate).getTime() / 1000,
                         media
                     });
+
                 } catch (itemError) {
                     console.warn('Error processing tweet:', itemError);
                     continue;
                 }
             }
-            
-            return tweets;
+
+            // After the loop, sort and slice
+            return tweets
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 5); // Take the 15 most recent tweets
+
         } catch (error) {
             console.warn(`Proxy ${proxy} failed:`, error);
             continue;
