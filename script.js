@@ -1102,22 +1102,22 @@ async function checkLiveStatus() {
                         <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
                             <div class="flex items-center mb-2">
                                 ${tweet.isRetweet ? 
-                                    `<span class="text-yellow-200 text-sm">🔄 Retweeted from ${tweet.originalAuthor}</span>` :
+                                    `<span class="text-yellow-200 text-sm">🔄 Retweeted from @${tweet.retweetedFrom?.replace(/^@/, '') || 'unknown'}</span>` :
                                     tweet.isReply ?
-                                    `<span class="text-yellow-200 text-sm">↩️ Replying to @${tweet.replyTo}</span>` :
+                                    `<span class="text-yellow-200 text-sm">↩️ Replying to @${tweet.replyTo?.replace(/^@/, '') || 'unknown'}</span>` :
                                     tweet.isSpace ?
                                     `<span class="text-yellow-200 text-sm">🎙️ Twitter Space</span>` :
                                     tweet.isQuote ?
-                                    `<span class="text-yellow-200 text-sm">💬 Quoted @${tweet.quotedTweet.author}</span>` :
-                                    `<span class="text-yellow-200 text-sm">${tweet.originalAuthor}</span>`
+                                    `<span class="text-yellow-200 text-sm">💬 Quoted @${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
+                                    `<span class="text-yellow-200 text-sm">@${tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>`
                                 }
                             </div>
                             <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
                             
-                            ${tweet.quotedTweet ? `
+                            ${tweet.isQuote ? `
                                 <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
-                                    <p class="text-sm text-yellow-200 mb-1">@${tweet.quotedTweet.author}</p>
-                                    <a href="https://x.com/${tweet.quotedTweet.author}/status/${tweet.quotedTweet.id}" 
+                                    <p class="text-sm text-yellow-200 mb-1">${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</p>
+                                    <a href="https://x.com/${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}/status/${tweet.quotedTweet?.id || tweet.quotedTweetId || tweet.id}" 
                                        target="_blank" 
                                        class="text-sm text-yellow-300 hover:text-yellow-400">
                                         View quoted tweet
@@ -1163,7 +1163,7 @@ async function checkLiveStatus() {
                             <div class="space-y-1 mb-4">
                                 <p class="text-xs text-yellow-200">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
                             </div>
-                            <a href="https://x.com/${tweet.originalAuthor.substring(1)}/status/${tweet.id}" 
+                            <a href="https://x.com/${tweet.originalAuthor ? tweet.originalAuthor.replace('@', '') : TWITTER_USERNAME}/status/${tweet.id}" 
                                target="_blank" 
                                class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
                                 View Tweet
@@ -1664,33 +1664,38 @@ async function scrapeNitterTweets() {
 // Update the getTweets function to use both RSS and scraped sources
 async function getTweets() {
     try {
-        const scrapedTweets = await scrapeNitterTweets();
+        // Try to get tweets from both sources
+        const [scrapedTweets, rssTweets] = await Promise.all([
+            scrapeNitterTweets(),
+            getRSSTweets().catch(error => {
+                debugWarn('RSS fetch failed:', error);
+                return [];
+            })
+        ]);
         
-        debugLog(`Got ${scrapedTweets.length} scraped tweets`);
+        debugLog(`Got ${scrapedTweets.length} scraped tweets and ${rssTweets.length} RSS tweets`);
 
-        const formattedTweets = scrapedTweets.map(tweet => ({
-            id: tweet.id,
-            text: tweet.text,
-            isRetweet: tweet.isRetweet,
-            isReply: tweet.isReply,
-            isQuote: tweet.isQuote,
-            isSpace: false,
-            replyTo: tweet.replyTo.replace(/^@/, ''), // Remove @ prefix if present
-            quotedTweet: tweet.isQuote ? {
-                author: tweet.quotedFrom.replace(/^@/, ''),
-                id: tweet.quotedTweetId
-            } : null,
-            spaceInfo: null,
-            originalAuthor: tweet.isRetweet ? tweet.retweetedFrom : `@${TWITTER_USERNAME}`,
-            timestamp: tweet.timestamp,
-            media: tweet.media || []
-        }));
+        // Combine tweets from both sources
+        const allTweets = [...scrapedTweets, ...rssTweets];
 
-        const sortedTweets = formattedTweets
+        // Use a Set to track unique tweet IDs
+        const seenIds = new Set();
+        const uniqueTweets = [];
+
+        // Keep only unique tweets, preferring scraped versions
+        for (const tweet of allTweets) {
+            if (!seenIds.has(tweet.id)) {
+                seenIds.add(tweet.id);
+                uniqueTweets.push(tweet);
+            }
+        }
+
+        // Sort by timestamp and take the most recent 5
+        const sortedTweets = uniqueTweets
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, 5);
 
-        debugLog('Scraped tweets for testing:', sortedTweets.map(t => ({
+        debugLog('Final combined tweets for testing:', sortedTweets.map(t => ({
             id: t.id,
             timestamp: t.timestamp,
             text: t.text.substring(0, 50) + '...',
@@ -1698,8 +1703,9 @@ async function getTweets() {
             replyTo: t.replyTo,
             isRetweet: t.isRetweet,
             isQuote: t.isQuote,
-            quotedAuthor: t.quotedTweet?.author,
-            media: t.media?.length || 0
+            quotedFrom: t.quotedFrom, // Use quotedFrom instead of quotedTweet.author
+            media: t.media?.length || 0,
+            source: t.source
         })));
 
         return sortedTweets;
@@ -1815,12 +1821,12 @@ async function getRSSTweets() {
                             const quoteLink = paragraphs[1].querySelector('a')?.href;
                             if (quoteLink && !quoteLink.includes('/spaces/')) {
                                 isQuote = true;
-                                const quotedId = quoteLink.split('/status/')[1]?.split('#')[0];
+                                // Extract the quoted tweet ID from the link
+                                const quotedId = quoteLink.split('/status/')[1]?.split(/[#\?]/)[0];  // Split on # or ?
                                 const quotedAuthor = quoteLink.split('/')[3];
                                 quotedTweet = {
                                     id: quotedId,
-                                    author: quotedAuthor,
-                                    text: ''
+                                    author: quotedAuthor
                                 };
                             }
                         }
