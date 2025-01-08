@@ -1466,189 +1466,214 @@ async function scrapeNitterTweets() {
         }
     }
 
+    // Helper function to scrape tweets from a specific URL
+    async function scrapeTweetsFromUrl(url, proxy) {
+        const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const html = await response.text();
+        debugLog(`Got HTML response length for ${url}:`, html.length);
+        
+        // Create a DOM parser
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Find all timeline items within the timeline container
+        const timelineItems = doc.querySelectorAll('.timeline .timeline-item');
+        debugLog(`Found timeline items for ${url}:`, timelineItems.length);
+        
+        const tweets = [];
+        
+        for (const item of timelineItems) {
+            try {
+                // Skip pinned tweets
+                const isPinned = item.querySelector('.pinned');
+                if (isPinned) {
+                    debugLog('Skipping pinned tweet');
+                    continue;
+                }
+
+                // Check for reply
+                const replyHeader = item.querySelector('.replying-to');
+                const isReply = !!replyHeader;
+                let replyTo = '';
+                if (isReply) {
+                    const replyUsername = replyHeader.querySelector('a')?.textContent?.trim();
+                    if (replyUsername) {
+                        replyTo = replyUsername;
+                        debugLog('Found reply to:', replyTo);
+                    }
+                }
+
+                // Check for retweet
+                const retweetHeader = item.querySelector('.retweet-header');
+                const isRetweet = !!retweetHeader;
+                let retweetedFrom = '';
+                if (isRetweet) {
+                    // Get the original tweet's author
+                    const originalAuthor = item.querySelector('.fullname')?.textContent?.trim();
+                    const originalUsername = item.querySelector('.username')?.textContent?.trim();
+                    if (originalUsername) {
+                        retweetedFrom = originalUsername;
+                        debugLog('Found retweet:', { 
+                            author: originalAuthor,
+                            username: originalUsername 
+                        });
+                    }
+                }
+
+                // Check for quote tweet
+                const quoteTweet = item.querySelector('.quote');
+                const isQuote = !!quoteTweet;
+                let quotedFrom = '';
+                let quotedTweetId = '';
+                if (isQuote) {
+                    const quoteUsername = quoteTweet.querySelector('.username')?.textContent.trim();
+                    const quoteLink = quoteTweet.querySelector('a.quote-link')?.getAttribute('href');
+                    if (quoteUsername) {
+                        quotedFrom = quoteUsername;
+                        quotedTweetId = quoteLink ? quoteLink.split('/status/')[1]?.split('#')[0] : '';
+                        debugLog('Found quote tweet:', { from: quotedFrom, id: quotedTweetId });
+                    }
+                }
+
+                // Get tweet content
+                const contentElement = item.querySelector('.tweet-content');
+                if (!contentElement) {
+                    debugLog('No content element found');
+                    continue;
+                }
+                let content = contentElement.textContent.trim();
+
+                // Get tweet ID from the link
+                const tweetLink = item.querySelector('a.tweet-link');
+                const tweetId = tweetLink ? tweetLink.getAttribute('href').split('/status/')[1]?.split('#')[0] : null;
+                if (!tweetId) {
+                    debugLog('No tweet ID found');
+                    continue;
+                }
+
+                // Get timestamp from tweet-date
+                const dateElement = item.querySelector('.tweet-date a');
+                const dateText = dateElement?.getAttribute('title'); // This contains the full date format
+                if (!dateText) {
+                    debugLog('No date found');
+                    continue;
+                }
+
+                // Parse the date
+                const date = parseTwitterDate(dateText);
+                if (!date) {
+                    debugLog('Invalid date:', dateText);
+                    continue;
+                }
+
+                // Get tweet stats
+                const stats = {
+                    replies: parseInt(item.querySelector('.icon-comment')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
+                    retweets: parseInt(item.querySelector('.icon-retweet')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
+                    likes: parseInt(item.querySelector('.icon-heart')?.closest('.tweet-stat')?.textContent?.trim() || '0')
+                };
+
+                // Get media attachments
+                const media = [];
+                
+                // Check for images
+                const images = item.querySelectorAll('.attachments .attachment.image img, .gallery-row img');
+                images.forEach(img => {
+                    let url = img.getAttribute('src');
+                    if (url && url.startsWith('/')) {
+                        url = NITTER_BASE + url;
+                    }
+                    if (url) {
+                        media.push({
+                            type: 'image',
+                            url: url
+                        });
+                    }
+                });
+
+                // Check for videos
+                const videos = item.querySelectorAll('.attachments .gallery-video video source, .gallery-video video source');
+                videos.forEach(source => {
+                    let url = source.getAttribute('src');
+                    if (url && url.startsWith('/')) {
+                        url = NITTER_BASE + url;
+                    }
+                    if (url) {
+                        media.push({
+                            type: 'video',
+                            url: url
+                        });
+                    }
+                });
+
+                tweets.push({
+                    id: tweetId,
+                    text: content,
+                    timestamp: Math.floor(date.getTime() / 1000),
+                    stats,
+                    media,
+                    isReply,
+                    isRetweet,
+                    isQuote,
+                    replyTo,
+                    retweetedFrom,
+                    quotedFrom,
+                    quotedTweetId
+                });
+
+            } catch (error) {
+                debugWarn('Error parsing tweet:', error);
+            }
+        }
+
+        return tweets;
+    }
+
     for (const proxy of corsProxies) {
         try {
-            const response = await fetch(`${proxy}${encodeURIComponent(NITTER_BASE + '/' + TWITTER_USERNAME + '/with_replies')}`);
-            
-            if (!response.ok) {
-                console.warn(`Proxy ${proxy} failed with status: ${response.status}`);
-                continue;
-            }
+            // Try to fetch both main timeline and replies timeline
+            const [mainTweets, replyTweets] = await Promise.all([
+                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, proxy),
+                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`, proxy)
+            ]);
 
-            const html = await response.text();
-            debugLog('Got HTML response length:', html.length);
-            
-            // Create a DOM parser
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            
-            // Find all timeline items within the timeline container
-            const timelineItems = doc.querySelectorAll('.timeline .timeline-item');
-            debugLog('Found timeline items:', timelineItems.length);
-            
-            const tweets = [];
-            
-            for (const item of timelineItems) {
-                try {
-                    // Skip pinned tweets
-                    const isPinned = item.querySelector('.pinned');
-                    if (isPinned) {
-                        debugLog('Skipping pinned tweet');
-                        continue;
-                    }
+            debugLog(`Scraped ${mainTweets.length} main tweets and ${replyTweets.length} reply tweets using proxy ${proxy}`);
 
-                    // Check for reply
-                    const replyHeader = item.querySelector('.replying-to');
-                    const isReply = !!replyHeader;
-                    let replyTo = '';
-                    if (isReply) {
-                        const replyUsername = replyHeader.querySelector('a')?.textContent?.trim();
-                        if (replyUsername) {
-                            replyTo = replyUsername;
-                            debugLog('Found reply to:', replyTo);
-                        }
-                    }
+            // Combine tweets, prioritizing main timeline tweets
+            const seenIds = new Set();
+            const combinedTweets = [];
 
-                    // Check for retweet
-                    const retweetHeader = item.querySelector('.retweet-header');
-                    const isRetweet = !!retweetHeader;
-                    let retweetedFrom = '';
-                    if (isRetweet) {
-                        // Get the original tweet's author
-                        const originalAuthor = item.querySelector('.fullname')?.textContent?.trim();
-                        const originalUsername = item.querySelector('.username')?.textContent?.trim();
-                        if (originalUsername) {
-                            retweetedFrom = originalUsername;
-                            debugLog('Found retweet:', { 
-                                author: originalAuthor,
-                                username: originalUsername 
-                            });
-                        }
-                    }
-
-                    // Check for quote tweet
-                    const quoteTweet = item.querySelector('.quote');
-                    const isQuote = !!quoteTweet;
-                    let quotedFrom = '';
-                    let quotedTweetId = '';
-                    if (isQuote) {
-                        const quoteUsername = quoteTweet.querySelector('.username')?.textContent.trim();
-                        const quoteLink = quoteTweet.querySelector('a.quote-link')?.getAttribute('href');
-                        if (quoteUsername) {
-                            quotedFrom = quoteUsername;
-                            quotedTweetId = quoteLink ? quoteLink.split('/status/')[1]?.split('#')[0] : '';
-                            debugLog('Found quote tweet:', { from: quotedFrom, id: quotedTweetId });
-                        }
-                    }
-
-                    // Get tweet content
-                    const contentElement = item.querySelector('.tweet-content');
-                    if (!contentElement) {
-                        debugLog('No content element found');
-                        continue;
-                    }
-                    let content = contentElement.textContent.trim();
-
-                    // Get tweet ID from the link
-                    const tweetLink = item.querySelector('a.tweet-link');
-                    const tweetId = tweetLink ? tweetLink.getAttribute('href').split('/status/')[1]?.split('#')[0] : null;
-                    if (!tweetId) {
-                        debugLog('No tweet ID found');
-                        continue;
-                    }
-
-                    // Get timestamp from tweet-date
-                    const dateElement = item.querySelector('.tweet-date a');
-                    const dateText = dateElement?.getAttribute('title'); // This contains the full date format
-                    if (!dateText) {
-                        debugLog('No date found');
-                        continue;
-                    }
-
-                    // Parse the date
-                    const date = parseTwitterDate(dateText);
-                    if (!date) {
-                        debugLog('Invalid date:', dateText);
-                        continue;
-                    }
-
-                    // Get tweet stats
-                    const stats = {
-                        replies: parseInt(item.querySelector('.icon-comment')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
-                        retweets: parseInt(item.querySelector('.icon-retweet')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
-                        likes: parseInt(item.querySelector('.icon-heart')?.closest('.tweet-stat')?.textContent?.trim() || '0')
-                    };
-
-                    // Get media attachments
-                    const media = [];
-                    
-                    // Check for images
-                    const images = item.querySelectorAll('.attachments .attachment.image img, .gallery-row img');
-                    images.forEach(img => {
-                        let url = img.getAttribute('src');
-                        if (url && url.startsWith('/')) {
-                            url = NITTER_BASE + url;
-                        }
-                        if (url) {
-                            media.push({
-                                type: 'image',
-                                url: url
-                            });
-                        }
+            // Add main timeline tweets first
+            for (const tweet of mainTweets) {
+                if (!seenIds.has(tweet.id)) {
+                    seenIds.add(tweet.id);
+                    combinedTweets.push({
+                        ...tweet,
+                        fromMainTimeline: true
                     });
-
-                    // Check for videos
-                    const videos = item.querySelectorAll('.attachments .gallery-video video source, .gallery-video video source');
-                    videos.forEach(source => {
-                        let url = source.getAttribute('src');
-                        if (url && url.startsWith('/')) {
-                            url = NITTER_BASE + url;
-                        }
-                        if (url) {
-                            media.push({
-                                type: 'video',
-                                url: url
-                            });
-                        }
-                    });
-
-                    const tweet = {
-                        id: tweetId,
-                        text: content,
-                        timestamp: Math.floor(date.getTime() / 1000),
-                        stats,
-                        media,
-                        isReply,
-                        isRetweet,
-                        isQuote,
-                        replyTo,
-                        retweetedFrom,
-                        quotedFrom,
-                        quotedTweetId
-                    };
-
-                    tweets.push(tweet);
-
-                    debugLog('Parsed tweet:', {
-                        id: tweetId,
-                        text: content.substring(0, 50) + '...',
-                        date: dateText,
-                        mediaCount: media.length,
-                        stats,
-                        isReply,
-                        replyTo,
-                        isRetweet,
-                        isQuote,
-                        quotedFrom
-                    });
-
-                } catch (error) {
-                    debugWarn('Error parsing tweet:', error);
                 }
             }
 
-            debugLog(`Scraped ${tweets.length} tweets from Nitter frontend using proxy ${proxy}`);
-            return tweets;
+            // Add reply tweets that weren't in the main timeline
+            for (const tweet of replyTweets) {
+                if (!seenIds.has(tweet.id)) {
+                    seenIds.add(tweet.id);
+                    combinedTweets.push({
+                        ...tweet,
+                        fromMainTimeline: false
+                    });
+                }
+            }
+
+            // Sort by timestamp
+            combinedTweets.sort((a, b) => b.timestamp - a.timestamp);
+
+            return combinedTweets;
 
         } catch (error) {
             debugWarn(`Proxy ${proxy} failed:`, error);
