@@ -213,7 +213,7 @@ function getLatestTime(video) {
 }
 
 // Add this near the top with other constants
-const VERBOSE = true;
+const VERBOSE = false;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -581,7 +581,7 @@ async function checkLiveStatus() {
             }),
             getCachedOrFetch(CLIPS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 5 });
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'clips', { limit: 15 });
                 return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(ORIGINAL_SONGS_CACHE_KEY, async () => {
@@ -1238,7 +1238,15 @@ async function checkLiveStatus() {
             }
 
             // Add clips section before the music playlist section (after collabs)
-            if (clipVideos.length > 0) {
+            const filteredClipVideos = clipVideos
+                .filter(video => 
+                    video.status !== 'live' && 
+                    video.status !== 'upcoming' &&
+                    video.raw?.status !== 'upcoming'  // Added check for raw status
+                )
+                .slice(0, 5); // Take only 5 videos after filtering
+
+            if (filteredClipVideos.length > 0) {
                 html += `
                     <div class="flex flex-col items-center mb-8">
                         <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Clips</h2>
@@ -1248,7 +1256,7 @@ async function checkLiveStatus() {
                 html += `
                     <div class="grid-container mb-12">
                         <div class="scroll-container">
-                            ${clipVideos.map(video => `
+                            ${filteredClipVideos.map(video => `
                                 <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
                                     ${video.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
                                     <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
