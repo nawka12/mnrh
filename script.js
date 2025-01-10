@@ -16,6 +16,9 @@ const ORIGINAL_SONGS_CACHE_KEY = 'originalSongs';
 // Add this constant near the other cache keys
 const COVER_SONGS_CACHE_KEY = 'coverSongs';
 
+// Add this constant for preferences
+const PREFERENCES_KEY = 'moonaPreferences'; 
+
 // Add this constant for career timeline
 const CAREER_TIMELINE = [
     {
@@ -210,7 +213,7 @@ function getLatestTime(video) {
 }
 
 // Add this near the top with other constants
-const VERBOSE = false;
+const VERBOSE = true;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -572,7 +575,8 @@ async function checkLiveStatus() {
             }),
             getCachedOrFetch(COLLABS_CACHE_KEY, async () => {
                 const client = await initializeHolodexClient();
-                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 5 });
+                // Fetch 10 collabs instead of 5
+                const videos = await client.getVideosByChannelId(MOONA_CHANNEL_ID, 'collabs', { limit: 15 });
                 return videos.filter(video => video.status !== 'missing');
             }),
             getCachedOrFetch(CLIPS_CACHE_KEY, async () => {
@@ -803,7 +807,7 @@ async function checkLiveStatus() {
                 video.status !== 'upcoming' &&
                 video.raw?.status !== 'upcoming'  // Added check for raw status
             )
-            .slice(0, 5);
+            .slice(0, 5); // Still take only 5 videos after filtering
 
         // Get the latest activity time from videos, collabs, and tweets
         let latestActivity = null;
@@ -1027,10 +1031,12 @@ async function checkLiveStatus() {
                     const videoId = stream.raw?.id;
                     const title = stream.raw?.title;
                     const scheduledStart = stream.scheduledStart || new Date(stream.raw?.scheduled_start);
+                    const channelName = stream.raw?.channel?.name;
+                    const isOtherChannel = stream.raw?.channel?.id !== MOONA_CHANNEL_ID;
                     
                     html += `
                         <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
-                            ${stream.status === 'upcoming' ? '<span class="status-badge live-badge">UPCOMING</span>' : ''}
+                            <span class="status-badge live-badge">${isOtherChannel ? 'UPCOMING COLLAB' : 'UPCOMING'}</span>
                             <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${title}</h3>
                             <div class="thumbnail-container">
                                 <img class="stream-thumbnail"
@@ -1041,6 +1047,9 @@ async function checkLiveStatus() {
                             </div>
                             <div class="space-y-2 mb-4">
                                 <p class="text-sm md:text-base text-yellow-100 opacity-90">Scheduled for: ${scheduledStart ? formatDateTime(scheduledStart) : 'N/A'}</p>
+                                ${isOtherChannel ? `
+                                    <p class="text-sm text-yellow-200">Channel: ${channelName}</p>
+                                ` : ''}
                             </div>
                             <a href="https://youtube.com/watch?v=${videoId}"
                                target="_blank"
@@ -1978,17 +1987,17 @@ function handleVisibilityChange() {
 }
 
 // Update the safeCheckLiveStatus function
-async function safeCheckLiveStatus() {
+async function safeCheckLiveStatus(isForceRefresh = false) {
     try {
         // Only proceed if page is visible
-        if (!pageVisible) {
+        if (!pageVisible && !isForceRefresh) {
             debugLog('Page is not visible, skipping status check');
             return;
         }
 
         // Check if we've been hidden for too long
         const timeSinceVisibilityChange = Date.now() - lastVisibilityChange;
-        if (timeSinceVisibilityChange > UPDATE_INTERVAL) {
+        if (timeSinceVisibilityChange > UPDATE_INTERVAL && !isForceRefresh) {
             debugLog('Long period of inactivity detected, forcing cache refresh...');
             await window.forceCacheRefresh();
             return;
@@ -2178,53 +2187,24 @@ async function initializeApp() {
     }
 }
 
-// Update the force refresh function
+// Update the forceCacheRefresh function
 window.forceCacheRefresh = async () => {
+    debugLog('Force refreshing cache...');
     try {
-        debugLog('Starting aggressive cache clear...');
-        
-        // Clear all localStorage
-        localStorage.clear();
-        
-        // Reset all state variables
-        lastUpdateTime = null;
-        lastVisibilityChange = Date.now();
-        
-        // Reset the Holodex client
-        holodexClient = null;
-        
-        // Clear any existing intervals
-        if (window.timeCounterInterval) {
-            clearInterval(window.timeCounterInterval);
-            window.timeCounterInterval = null;
-        }
-        
-        debugLog('Reinitializing Holodex client...');
-        holodexClient = await initializeHolodexClient();
-        
-        if (!holodexClient) {
-            throw new Error('Failed to reinitialize Holodex client');
-        }
-        
-        debugLog('Starting fresh status check...');
-        await checkLiveStatus();
+        // Clear all cached data
+        ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY, 
+         ORIGINAL_SONGS_CACHE_KEY, COVER_SONGS_CACHE_KEY].forEach(key => {
+            localStorage.removeItem(key);
+        });
+
+        // Force a check with the isForceRefresh flag
+        await safeCheckLiveStatus(true);
         
         // Update the cache status display
         updateCacheStatus();
-        
-        debugLog('Force refresh completed successfully');
     } catch (error) {
-        debugError('Force refresh failed:', error);
-        // Show error to user
-        document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-400">Error refreshing data: ${error.message}</p>
-                <button onclick="window.location.reload()" 
-                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
-                    Reload Page
-                </button>
-            </div>
-        `;
+        debugError('Error during force refresh:', error);
+        throw error; // Re-throw to be handled by the caller
     }
 };
 
@@ -2238,22 +2218,55 @@ function initializeAudio() {
     const muteButton = document.getElementById('muteButton');
     const soundWaves = document.getElementById('soundWaves');
     
-    // Ensure audio starts unmuted
-    bgMusic.muted = false;
+    // Load saved preferences immediately
+    try {
+        const savedPreferences = localStorage.getItem(PREFERENCES_KEY);
+        debugLog('Loaded preferences:', savedPreferences);
+        
+        if (savedPreferences) {
+            const { isMuted: savedMuted } = JSON.parse(savedPreferences);
+            isMuted = savedMuted;
+            
+            // Apply muted state immediately
+            bgMusic.muted = isMuted;
+            soundWaves.style.display = isMuted ? 'none' : 'block';
+            debugLog('Applied saved mute state:', isMuted);
+        }
+    } catch (error) {
+        debugWarn('Error loading audio preferences:', error);
+    }
     
-    // Try to play audio on page load
-    document.addEventListener('click', function initAudio() {
-        bgMusic.volume = 0.25; // Set a comfortable volume level
-        bgMusic.muted = false; // Explicitly unmute
-        bgMusic.play().catch(error => console.log("Audio autoplay failed:", error));
+    // Handle initial audio setup
+    const initAudio = () => {
+        bgMusic.volume = 0.25;
+        bgMusic.muted = isMuted; // Ensure muted state is applied
+        
+        if (!isMuted) {
+            bgMusic.play().catch(error => debugWarn("Audio autoplay failed:", error));
+        }
         document.removeEventListener('click', initAudio);
-    }, { once: true });
+        debugLog('Audio initialized with muted state:', isMuted);
+    };
+    
+    document.addEventListener('click', initAudio, { once: true });
 
-    // Handle mute button clicks
+    // Handle mute button clicks with debug logging
     muteButton.addEventListener('click', () => {
         isMuted = !isMuted;
+        debugLog('Mute button clicked, new state:', isMuted);
+        
+        // Apply muted state
         bgMusic.muted = isMuted;
         soundWaves.style.display = isMuted ? 'none' : 'block';
+        
+        // Save preferences
+        try {
+            const preferences = JSON.stringify({ isMuted });
+            localStorage.setItem(PREFERENCES_KEY, preferences);
+            debugLog('Saved preferences:', preferences);
+        } catch (error) {
+            debugWarn('Error saving audio preferences:', error);
+        }
     });
 }
 
