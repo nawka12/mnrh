@@ -25,3 +25,4 @@ RUN apk add --no-cache openssl && \
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY moonaroh.html /usr/share/nginx/html/moonaroh.html
+COPY assets/ada_moona_peko.mp3 /usr/share/nginx/html/assets/ada_moona_peko.mp3

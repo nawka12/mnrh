@@ -2218,5 +2218,37 @@ window.forceCacheRefresh = async () => {
     }
 };
 
+// Add at the beginning of the file
+let bgMusic;
+let isMuted = false;
+
+// Initialize audio handling
+function initializeAudio() {
+    bgMusic = document.getElementById('bgMusic');
+    const muteButton = document.getElementById('muteButton');
+    const soundWaves = document.getElementById('soundWaves');
+    
+    // Ensure audio starts unmuted
+    bgMusic.muted = false;
+    
+    // Try to play audio on page load
+    document.addEventListener('click', function initAudio() {
+        bgMusic.volume = 0.25; // Set a comfortable volume level
+        bgMusic.muted = false; // Explicitly unmute
+        bgMusic.play().catch(error => console.log("Audio autoplay failed:", error));
+        document.removeEventListener('click', initAudio);
+    }, { once: true });
+
+    // Handle mute button clicks
+    muteButton.addEventListener('click', () => {
+        isMuted = !isMuted;
+        bgMusic.muted = isMuted;
+        soundWaves.style.display = isMuted ? 'none' : 'block';
+    });
+}
+
 // Wait for DOM to be fully loaded, then initialize
-document.addEventListener('DOMContentLoaded', initializeApp);
+document.addEventListener('DOMContentLoaded', () => {
+    initializeAudio();
+    initializeApp();  // Your existing initialization function
+});
