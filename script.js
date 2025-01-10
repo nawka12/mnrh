@@ -210,7 +210,7 @@ function getLatestTime(video) {
 }
 
 // Add this near the top with other constants
-const VERBOSE = true;
+const VERBOSE = false;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -2247,8 +2247,47 @@ function initializeAudio() {
     });
 }
 
+// Add this after the initializeAudio function
+function initializeCreditsPopup() {
+    const infoButton = document.getElementById('infoButton');
+    const creditsPopup = document.getElementById('creditsPopup');
+    const closeCredits = document.getElementById('closeCredits');
+
+    // Show popup
+    infoButton.addEventListener('click', () => {
+        creditsPopup.classList.remove('hidden');
+        // Add animation classes
+        creditsPopup.classList.add('animate-fadeIn');
+        creditsPopup.querySelector('.glass-effect').classList.add('animate-slideIn');
+    });
+
+    // Hide popup
+    function hidePopup() {
+        creditsPopup.classList.add('hidden');
+        creditsPopup.classList.remove('animate-fadeIn');
+        creditsPopup.querySelector('.glass-effect').classList.remove('animate-slideIn');
+    }
+
+    closeCredits.addEventListener('click', hidePopup);
+    
+    // Close when clicking outside
+    creditsPopup.addEventListener('click', (e) => {
+        if (e.target === creditsPopup) {
+            hidePopup();
+        }
+    });
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !creditsPopup.classList.contains('hidden')) {
+            hidePopup();
+        }
+    });
+}
+
 // Wait for DOM to be fully loaded, then initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeAudio();
     initializeApp();  // Your existing initialization function
+    initializeCreditsPopup();
 });
