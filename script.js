@@ -791,7 +791,17 @@ async function checkLiveStatus() {
         const filteredRecentVideos = recentVideos
             .filter(video => 
                 video.status !== 'live' && 
-                video.status !== 'upcoming'
+                video.status !== 'upcoming' &&
+                video.raw?.status !== 'upcoming'  // Added check for raw status
+            )
+            .slice(0, 5);
+
+        // Add similar filter for collabs
+        const filteredCollabVideos = collabVideos
+            .filter(video => 
+                video.status !== 'live' && 
+                video.status !== 'upcoming' &&
+                video.raw?.status !== 'upcoming'  // Added check for raw status
             )
             .slice(0, 5);
 
@@ -816,8 +826,8 @@ async function checkLiveStatus() {
         }
 
         // Check collabs and compare with current latest activity
-        if (collabVideos.length > 0) {
-            const latestCollab = collabVideos[0];
+        if (filteredCollabVideos.length > 0) {
+            const latestCollab = filteredCollabVideos[0];
             debugLog('Latest collab data:', {
                 title: latestCollab.title,
                 publishedAt: latestCollab.publishedAt,
@@ -1175,7 +1185,7 @@ async function checkLiveStatus() {
             }
 
             // Add collabs section before the music playlist section
-            if (collabVideos.length > 0) {
+            if (filteredCollabVideos.length > 0) {
                 html += `
                     <div class="flex flex-col items-center mb-8">
                         <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Collaborations</h2>
@@ -1185,7 +1195,7 @@ async function checkLiveStatus() {
                 html += `
                     <div class="grid-container mb-12">
                         <div class="scroll-container">
-                            ${collabVideos.map(video => `
+                            ${filteredCollabVideos.map(video => `
                                 <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
                                     ${video.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
                                     <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${video.title}</h3>
