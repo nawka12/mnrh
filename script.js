@@ -1701,19 +1701,177 @@ async function scrapeNitterTweets() {
         }
     }
 
-    // If all proxies fail, try direct fetch
+    // If all proxies fail, try direct fetch without proxy
     try {
         debugLog('All proxies failed, attempting direct fetch...');
-        const tweets = await scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, '');
-        if (tweets.length > 0) {
-            return tweets;
+        const response = await fetch(`${NITTER_BASE}/${TWITTER_USERNAME}`);
+        if (!response.ok) {
+            throw new Error(`Direct fetch failed with status: ${response.status}`);
         }
+        const html = await response.text();
+        return await processTweetsHtml(html);
     } catch (error) {
         debugWarn('Direct fetch failed:', error);
+        throw new Error('NITTER_UNAVAILABLE');
+    }
+}
+
+// Add new helper function to process HTML
+async function processTweetsHtml(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Find all timeline items within the timeline container
+    const timelineItems = doc.querySelectorAll('.timeline .timeline-item');
+    debugLog(`Found timeline items:`, timelineItems.length);
+    
+    const tweets = [];
+    
+    for (const item of timelineItems) {
+        try {
+            // Skip pinned tweets
+            const isPinned = item.querySelector('.pinned');
+            if (isPinned) {
+                debugLog('Skipping pinned tweet');
+                continue;
+            }
+
+            // Check for reply
+            const replyHeader = item.querySelector('.replying-to');
+            const isReply = !!replyHeader;
+            let replyTo = '';
+            if (isReply) {
+                const replyUsername = replyHeader.querySelector('a')?.textContent?.trim();
+                if (replyUsername) {
+                    replyTo = replyUsername;
+                    debugLog('Found reply to:', replyTo);
+                }
+            }
+
+            // Check for retweet
+            const retweetHeader = item.querySelector('.retweet-header');
+            const isRetweet = !!retweetHeader;
+            let retweetedFrom = '';
+            if (isRetweet) {
+                // Get the original tweet's author
+                const originalAuthor = item.querySelector('.fullname')?.textContent?.trim();
+                const originalUsername = item.querySelector('.username')?.textContent?.trim();
+                if (originalUsername) {
+                    retweetedFrom = originalUsername;
+                    debugLog('Found retweet:', { 
+                        author: originalAuthor,
+                        username: originalUsername 
+                    });
+                }
+            }
+
+            // Check for quote tweet
+            const quoteTweet = item.querySelector('.quote');
+            const isQuote = !!quoteTweet;
+            let quotedFrom = '';
+            let quotedTweetId = '';
+            if (isQuote) {
+                const quoteUsername = quoteTweet.querySelector('.username')?.textContent.trim();
+                const quoteLink = quoteTweet.querySelector('a.quote-link')?.getAttribute('href');
+                if (quoteUsername) {
+                    quotedFrom = quoteUsername;
+                    quotedTweetId = quoteLink ? quoteLink.split('/status/')[1]?.split('#')[0] : '';
+                    debugLog('Found quote tweet:', { from: quotedFrom, id: quotedTweetId });
+                }
+            }
+
+            // Get tweet content
+            const contentElement = item.querySelector('.tweet-content');
+            if (!contentElement) {
+                debugLog('No content element found');
+                continue;
+            }
+            let content = contentElement.textContent.trim();
+
+            // Get tweet ID from the link
+            const tweetLink = item.querySelector('a.tweet-link');
+            const tweetId = tweetLink ? tweetLink.getAttribute('href').split('/status/')[1]?.split('#')[0] : null;
+            if (!tweetId) {
+                debugLog('No tweet ID found');
+                continue;
+            }
+
+            // Get timestamp from tweet-date
+            const dateElement = item.querySelector('.tweet-date a');
+            const dateText = dateElement?.getAttribute('title'); // This contains the full date format
+            if (!dateText) {
+                debugLog('No date found');
+                continue;
+            }
+
+            // Parse the date
+            const date = parseTwitterDate(dateText);
+            if (!date) {
+                debugLog('Invalid date:', dateText);
+                continue;
+            }
+
+            // Get tweet stats
+            const stats = {
+                replies: parseInt(item.querySelector('.icon-comment')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
+                retweets: parseInt(item.querySelector('.icon-retweet')?.closest('.tweet-stat')?.textContent?.trim() || '0'),
+                likes: parseInt(item.querySelector('.icon-heart')?.closest('.tweet-stat')?.textContent?.trim() || '0')
+            };
+
+            // Get media attachments
+            const media = [];
+            
+            // Check for images
+            const images = item.querySelectorAll('.attachments .attachment.image img, .gallery-row img');
+            images.forEach(img => {
+                let url = img.getAttribute('src');
+                if (url && url.startsWith('/')) {
+                    url = NITTER_BASE + url;
+                }
+                if (url) {
+                    media.push({
+                        type: 'image',
+                        url: url
+                    });
+                }
+            });
+
+            // Check for videos
+            const videos = item.querySelectorAll('.attachments .gallery-video video source, .gallery-video video source');
+            videos.forEach(source => {
+                let url = source.getAttribute('src');
+                if (url && url.startsWith('/')) {
+                    url = NITTER_BASE + url;
+                }
+                if (url) {
+                    media.push({
+                        type: 'video',
+                        url: url
+                    });
+                }
+            });
+
+            tweets.push({
+                id: tweetId,
+                text: content,
+                timestamp: Math.floor(date.getTime() / 1000),
+                stats,
+                media,
+                isReply,
+                isRetweet,
+                isQuote,
+                replyTo,
+                retweetedFrom,
+                quotedFrom,
+                quotedTweetId
+            });
+
+        } catch (error) {
+            debugWarn('Error parsing tweet:', error);
+        }
     }
 
-    // If everything fails, throw a specific error
-    throw new Error('NITTER_UNAVAILABLE');
+    return tweets;
 }
 
 // Update the getTweets function to handle the specific error
@@ -1723,10 +1881,10 @@ async function getTweets() {
         const [scrapedTweets, rssTweets] = await Promise.all([
             scrapeNitterTweets().catch(error => {
                 if (error.message === 'NITTER_UNAVAILABLE') {
-                    throw error; // Re-throw specific error
+                    debugWarn('Nitter scraping failed:', error);
+                    return [];
                 }
-                debugWarn('Scraping failed:', error);
-                return [];
+                throw error; // Re-throw other errors
             }),
             getRSSTweets().catch(error => {
                 debugWarn('RSS fetch failed:', error);
@@ -1735,6 +1893,14 @@ async function getTweets() {
         ]);
         
         debugLog(`Got ${scrapedTweets.length} scraped tweets and ${rssTweets.length} RSS tweets`);
+
+        // If both methods return empty arrays, show the error message
+        if (scrapedTweets.length === 0 && rssTweets.length === 0) {
+            return {
+                error: true,
+                message: 'Unable to fetch tweets at the moment, please try again later.'
+            };
+        }
 
         // Combine tweets from both sources
         const allTweets = [...scrapedTweets, ...rssTweets];
@@ -1756,7 +1922,7 @@ async function getTweets() {
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, 5);
 
-        debugLog('Final combined tweets for testing:', sortedTweets.map(t => ({
+        debugLog('Final combined tweets:', sortedTweets.map(t => ({
             id: t.id,
             timestamp: t.timestamp,
             text: t.text.substring(0, 50) + '...',
@@ -1764,23 +1930,27 @@ async function getTweets() {
             replyTo: t.replyTo,
             isRetweet: t.isRetweet,
             isQuote: t.isQuote,
-            quotedFrom: t.quotedFrom, // Use quotedFrom instead of quotedTweet.author
+            quotedFrom: t.quotedFrom,
             media: t.media?.length || 0,
             source: t.source
         })));
 
+        // Only return error if we actually have no tweets
+        if (sortedTweets.length === 0) {
+            return {
+                error: true,
+                message: 'No tweets available at the moment, please try again later.'
+            };
+        }
+
         return sortedTweets;
 
     } catch (error) {
-        if (error.message === 'NITTER_UNAVAILABLE') {
-            // Return a special object to indicate Nitter is down
-            return {
-                error: true,
-                message: 'Nitter is having issues, please try again later.'
-            };
-        }
         debugError('Error getting tweets:', error);
-        return [];
+        return {
+            error: true,
+            message: 'Unable to fetch tweets at the moment, please try again later.'
+        };
     }
 }
 
@@ -1793,6 +1963,7 @@ async function getRSSTweets() {
         'https://api.codetabs.com/v1/proxy?quest='
     ];
 
+    // Try with CORS proxies first
     for (const proxy of corsProxies) {
         try {
             // Fetch both RSS feeds
@@ -1975,8 +2146,184 @@ async function getRSSTweets() {
         }
     }
 
-    // If all proxies fail, throw an error
-    throw new Error('All CORS proxies failed to fetch tweets');
+    // If all proxies fail, try direct fetch
+    try {
+        debugLog('All proxies failed, attempting direct RSS fetch...');
+        const [mainResponse, repliesResponse] = await Promise.all([
+            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`),
+            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`)
+        ]);
+
+        if (!mainResponse.ok || !repliesResponse.ok) {
+            throw new Error(`Direct RSS fetch failed with status: ${mainResponse.status}/${repliesResponse.status}`);
+        }
+
+        // Process RSS responses
+        const parser = new DOMParser();
+        const [mainXml, repliesXml] = await Promise.all([
+            parser.parseFromString(await mainResponse.text(), "text/xml"),
+            parser.parseFromString(await repliesResponse.text(), "text/xml")
+        ]);
+
+        // Verify both XMLs are valid
+        if (mainXml.getElementsByTagName('parsererror').length > 0 || 
+            repliesXml.getElementsByTagName('parsererror').length > 0) {
+            throw new Error('Direct RSS fetch returned invalid XML');
+        }
+
+        // Process tweets as before
+        const mainItems = Array.from(mainXml.querySelectorAll('item'));
+        const repliesItems = Array.from(repliesXml.querySelectorAll('item'));
+        const allItems = [...mainItems, ...repliesItems];
+
+        // Use a Set to track unique tweet IDs
+        const seenIds = new Set();
+        const tweets = [];
+
+        // Add debug logging for feed contents
+        debugLog(`Main feed items: ${mainItems.length}`);
+        debugLog(`Replies feed items: ${repliesItems.length}`);
+        debugLog(`Combined items: ${allItems.length}`);
+
+        for (const item of allItems) {
+            try {
+                const link = item.querySelector('link')?.textContent || '';
+                const id = link.split('/status/')[1]?.split('#')[0];
+                
+                // Add debug logging for each item
+                debugLog(`Processing tweet: ${link} (ID: ${id})`);
+                
+                // Skip if we've already processed this tweet
+                if (!id || seenIds.has(id)) {
+                    debugLog(`Skipping duplicate or invalid tweet: ${id}`);
+                    continue;
+                }
+                seenIds.add(id);
+
+                // Rest of your existing tweet processing code
+                const title = item.querySelector('title')?.textContent || '';
+                const creator = item.querySelector('creator')?.textContent || `@${TWITTER_USERNAME}`;
+                const description = item.querySelector('description')?.textContent || '';
+                const pubDate = item.querySelector('pubDate')?.textContent;
+                
+                if (!link || !pubDate) continue;
+                
+                // Parse the description to extract text and links
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = description;
+                
+                // Get all paragraphs and links
+                const paragraphs = tempDiv.querySelectorAll('p');
+                const firstLink = tempDiv.querySelector('a')?.href;
+                
+                // Check if this is a Space
+                let isSpace = false;
+                let spaceInfo = null;
+                let mainText = '';
+                let isQuote = false;
+                let quotedTweet = null;
+
+                if (firstLink && (firstLink.includes('/spaces/') || title.includes('/spaces/'))) {
+                    isSpace = true;
+                    const spaceId = (firstLink || title).split('/spaces/')[1]?.split(/[/#]/)[0];
+                    spaceInfo = {
+                        id: spaceId,
+                        url: `https://twitter.com/i/spaces/${spaceId}`
+                    };
+                    mainText = '🎙️ Started a Twitter Space';
+                } else {
+                    // Regular tweet processing
+                    mainText = paragraphs[0]?.textContent || '';
+                    
+                    // Check for quote tweet in second paragraph
+                    if (paragraphs[1]) {
+                        const quoteLink = paragraphs[1].querySelector('a')?.href;
+                        if (quoteLink && !quoteLink.includes('/spaces/')) {
+                            isQuote = true;
+                            // Extract the quoted tweet ID from the link
+                            const quotedId = quoteLink.split('/status/')[1]?.split(/[#\?]/)[0];  // Split on # or ?
+                            const quotedAuthor = quoteLink.split('/')[3];
+                            quotedTweet = {
+                                id: quotedId,
+                                author: quotedAuthor
+                            };
+                        }
+                    }
+                }
+
+                // Process media as before
+                const media = Array.from(tempDiv.querySelectorAll('img, video'))
+                    .map(element => {
+                        let originalUrl = '';
+                        
+                        if (element.tagName.toLowerCase() === 'video') {
+                            // Get URL from source element inside video
+                            const source = element.querySelector('source');
+                            originalUrl = source?.getAttribute('src') || '';
+                            
+                            // Extract video filename from Nitter URL
+                            const videoMatch = originalUrl.match(/video\.twimg\.com%2Ftweet_video%2F([^.]+\.mp4)/);
+                            if (videoMatch) {
+                                const videoUrl = `https://video.twimg.com/tweet_video/${videoMatch[1]}`;
+                                return {
+                                    type: 'video',
+                                    url: videoUrl
+                                };
+                            }
+                        } else {
+                            // Handle images
+                            originalUrl = element.src || '';
+                            const mediaMatch = originalUrl.match(/\/media%2F([^.]+\.[^?]+)/);
+                            if (mediaMatch) {
+                                const imageUrl = `https://pbs.twimg.com/media/${mediaMatch[1]}`; // Create the image URL
+                                return {
+                                    type: 'image',
+                                    url: imageUrl
+                                };
+                            }
+                        }
+                        return null;
+                    })
+                    .filter(Boolean);
+                
+                const isRetweet = title.startsWith('RT by');
+                const isReply = title.startsWith('R to');
+                let replyTo = '';
+                
+                if (isReply) {
+                    replyTo = title.split('R to ')[1].split(':')[0].trim();
+                }
+
+                tweets.push({
+                    id,
+                    text: mainText,
+                    isRetweet,
+                    isReply,
+                    isQuote,
+                    isSpace,
+                    replyTo,
+                    quotedTweet,
+                    spaceInfo,
+                    originalAuthor: creator,
+                    timestamp: new Date(pubDate).getTime() / 1000,
+                    media
+                });
+
+            } catch (itemError) {
+                console.warn('Error processing tweet:', itemError);
+                continue;
+            }
+        }
+
+        // After the loop, sort and slice
+        return tweets
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 5); // Take the 15 most recent tweets
+
+    } catch (error) {
+        debugWarn('Direct RSS fetch failed:', error);
+        throw new Error('All fetch attempts failed');
+    }
 }
 
 // Helper function to format tweet text
