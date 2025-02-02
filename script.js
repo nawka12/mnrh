@@ -163,19 +163,42 @@ const CAREER_TIMELINE = [
     }
 ];
 
-// Add these helper functions near the top of the file
+// Add DOM caching at the top after constants
+const domRefs = {
+    liveStatus: document.getElementById('liveStatus'),
+    timeCounter: document.getElementById('timeCounter'),
+    muteButton: document.getElementById('muteButton'),
+    soundWaves: document.getElementById('soundWaves'),
+    lastUpdate: document.getElementById('lastUpdate'),
+    creditsPopup: document.getElementById('creditsPopup'),
+    infoButton: document.getElementById('infoButton'),
+    closeCredits: document.getElementById('closeCredits')
+};
+
+// Add formatter cache
+const formatterCache = new Map();
+function getFormatter(options) {
+    const key = JSON.stringify(options);
+    if (!formatterCache.has(key)) {
+        formatterCache.set(key, new Intl.DateTimeFormat('en-GB', options));
+    }
+    return formatterCache.get(key);
+}
+
+// Update existing formatDate and formatDateTime to use cache
 function formatDate(dateString) {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
+    const formatter = getFormatter({
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
     });
+    return formatter.format(date);
 }
 
 function formatDateTime(dateString) {
     const date = new Date(dateString);
-    return date.toLocaleString('en-GB', {
+    const formatter = getFormatter({
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -183,33 +206,124 @@ function formatDateTime(dateString) {
         minute: '2-digit',
         hour12: false
     });
+    return formatter.format(date);
 }
 
-// Add this helper function near the other helper functions (like formatDate and formatDateTime)
-function getLatestTime(video) {
-    // Try all possible date fields
-    const dates = [
-        video.published_at,
-        video.available_at,
-        video.start_scheduled,
-        video.start_actual,
-        // Also try nested fields
-        video.raw?.published_at,
-        video.raw?.available_at,
-        video.raw?.start_scheduled,
-        video.raw?.start_actual
-    ].filter(Boolean); // Remove null/undefined values
+// Add optimized HTML generation functions
+function generateCardHTML(item, type) {
+    const isCollab = type === 'collab';
+    return `
+        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+            ${item.status === 'live' ? '<span class="status-badge live-badge">LIVE</span>' : ''}
+            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${item.title}</h3>
+            <div class="thumbnail-container">
+                <img class="stream-thumbnail" 
+                     src="https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg"
+                     data-video-id="${item.videoId}"
+                     loading="lazy"
+                     alt="Video thumbnail">
+            </div>
+            ${generateCardFooter(item, isCollab)}
+        </div>`;
+}
 
-    if (dates.length === 0) {
-        debugWarn('No valid date found for video:', video.title);
-        return new Date(0); // Return oldest possible date if no valid date found
+function generateCardFooter(item, isCollab) {
+    return `
+        <div class="space-y-2 mb-4">
+            <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                ${isCollab ? 'Collaboration' : 'Latest activity'}: 
+                ${item.publishedAt ? formatDateTime(item.publishedAt) : 'N/A'}
+            </p>
+            ${isCollab && item.raw?.channel?.name ? 
+                `<p class="text-sm text-yellow-200">Channel: ${item.raw.channel.name}</p>` : ''}
+        </div>
+        <a href="https://youtube.com/watch?v=${item.videoId}" 
+           target="_blank" 
+           class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+            Watch ${isCollab ? 'Collab' : 'Video'}
+        </a>`;
+}
+
+// Add optimized video filtering
+const videoFilter = video => 
+    video.status !== 'live' && 
+    video.status !== 'upcoming' &&
+    video.raw?.status !== 'upcoming';
+
+// Add optimized cache handler
+const cacheHandler = {
+    get(key) {
+        try {
+            const item = localStorage.getItem(key);
+            return item ? JSON.parse(item) : null;
+        } catch (e) {
+            debugWarn('Cache read error:', e);
+            return null;
+        }
+    },
+    set(key, data) {
+        try {
+            localStorage.setItem(key, JSON.stringify({
+                value: data,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            debugWarn('Cache write error:', e);
+            try {
+                localStorage.clear();
+                localStorage.setItem(key, JSON.stringify({
+                    value: data,
+                    timestamp: Date.now()
+                }));
+            } catch (e2) {
+                debugError('Cache write failed after clear:', e2);
+            }
+        }
     }
+};
 
-    // Convert all dates to Date objects
-    const dateTimes = dates.map(d => new Date(d));
+// Add request batching
+async function batchFetchRequests(requests) {
+    const BATCH_SIZE = 4;
+    const results = [];
     
-    // Return the most recent date
-    return new Date(Math.max(...dateTimes.map(d => d.getTime())));
+    for (let i = 0; i < requests.length; i += BATCH_SIZE) {
+        const batch = requests.slice(i, i + BATCH_SIZE);
+        results.push(...await Promise.all(batch));
+    }
+    
+    return results;
+}
+
+// Add lazy loading observer
+const lazyLoadObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const img = entry.target;
+            if (img.dataset.src) {
+                img.src = img.dataset.src;
+                lazyLoadObserver.unobserve(img);
+            }
+        }
+    });
+});
+
+// Add debounced resize handler
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        // Update any layout-dependent elements
+        if (domRefs.liveStatus) {
+            updateLayoutForViewport();
+        }
+    }, 100);
+});
+
+function updateLayoutForViewport() {
+    const isMobile = window.innerWidth < 640;
+    // Add any viewport-specific updates here
+    document.documentElement.style.setProperty('--card-width', isMobile ? '85%' : '350px');
 }
 
 // Add this near the top with other constants
@@ -259,7 +373,7 @@ const MOONA_CHANNEL_ID = 'UCP0BspO_AMEe3aQqqpo89Dg';
 const TWITTER_USERNAME = 'moonahoshinova';
 
 let lastUpdateTime = null;
-const UPDATE_INTERVAL = 1 * 60 * 1000; // 1 minutes in milliseconds
+const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
 // Update the cache duration to be shorter
 const CACHE_DURATION = 30 * 1000; // 30 seconds in milliseconds
@@ -1142,78 +1256,7 @@ async function checkLiveStatus() {
                     html += `
                         <div class="grid-container mb-12">
                             <div class="scroll-container">
-                                ${tweets.map(tweet => `
-                                    <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
-                                        <div class="flex items-center mb-2">
-                                            ${tweet.isRetweet ? 
-                                                `<span class="text-yellow-200 text-sm">🔄 Retweeted from @${tweet.retweetedFrom?.replace(/^@/, '') || 'unknown'}</span>` :
-                                                tweet.isReply ?
-                                                `<span class="text-yellow-200 text-sm">↩️ Replying to @${tweet.replyTo?.replace(/^@/, '') || 'unknown'}</span>` :
-                                                tweet.isSpace ?
-                                                `<span class="text-yellow-200 text-sm">🎙️ Twitter Space</span>` :
-                                                tweet.isQuote ?
-                                                `<span class="text-yellow-200 text-sm">💬 Quoted @${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
-                                                `<span class="text-yellow-200 text-sm">@${tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>`
-                                            }
-                                        </div>
-                                        <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
-                                        
-                                        ${tweet.isQuote ? `
-                                            <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
-                                                <p class="text-sm text-yellow-200 mb-1">${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</p>
-                                                <a href="https://x.com/${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}/status/${tweet.quotedTweet?.id || tweet.quotedTweetId || tweet.id}" 
-                                                   target="_blank" 
-                                                   class="text-sm text-yellow-300 hover:text-yellow-400">
-                                                    View quoted tweet
-                                                </a>
-                                            </div>
-                                        ` : ''}
-
-                                        ${tweet.spaceInfo ? `
-                                            <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
-                                                <p class="text-sm font-semibold text-yellow-300 mb-2">🎙️ Twitter Space</p>
-                                                <a href="${tweet.spaceInfo.url}" 
-                                                   target="_blank" 
-                                                   class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
-                                                    Join Space
-                                                </a>
-                                            </div>
-                                        ` : ''}
-
-                                        ${tweet.media.length > 0 ? `
-                                            <div class="mb-3 ${tweet.media.length > 1 ? 'grid grid-cols-2 gap-2' : ''}">
-                                                ${tweet.media.map(item => {
-                                                    if (item.type === 'video') {
-                                                        return `
-                                                            <video autoplay loop muted playsinline 
-                                                                   class="rounded-lg w-full object-contain"
-                                                                   style="max-height: 400px;">
-                                                                <source src="${item.url}" type="video/mp4">
-                                                            </video>
-                                                        `;
-                                                    } else {
-                                                        return `
-                                                            <img src="${item.url}" 
-                                                                 alt="Tweet media" 
-                                                                 class="rounded-lg w-full object-contain"
-                                                                 style="max-height: 400px;"
-                                                                 loading="lazy">
-                                                        `;
-                                                    }
-                                                }).join('')}
-                                            </div>
-                                        ` : ''}
-                                        
-                                        <div class="space-y-1 mb-4">
-                                            <p class="text-xs text-yellow-200">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
-                                        </div>
-                                        <a href="https://x.com/${tweet.originalAuthor ? tweet.originalAuthor.replace('@', '') : TWITTER_USERNAME}/status/${tweet.id}" 
-                                           target="_blank" 
-                                           class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
-                                            View Tweet
-                                        </a>
-                                    </div>
-                                `).join('')}
+                                ${tweets.map(tweet => generateTweetHTML(tweet)).join('')}
                             </div>
                         </div>
                     `;
@@ -1683,6 +1726,7 @@ async function scrapeNitterTweets() {
             } catch (error) {
                 debugWarn('Error parsing tweet:', error);
             }
+
         }
 
         return tweets;
@@ -1691,9 +1735,27 @@ async function scrapeNitterTweets() {
     // Try with CORS proxies first
     for (const proxy of corsProxies) {
         try {
-            const tweets = await scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, proxy);
-            if (tweets.length > 0) {
-                return tweets;
+            // Fetch from both endpoints
+            const [mainTweets, replyTweets] = await Promise.all([
+                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, proxy),
+                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`, proxy)
+            ]);
+
+            // Combine and deduplicate tweets
+            const allTweets = [...mainTweets, ...replyTweets];
+            const seenIds = new Set();
+            const uniqueTweets = [];
+
+            for (const tweet of allTweets) {
+                if (!seenIds.has(tweet.id)) {
+                    seenIds.add(tweet.id);
+                    uniqueTweets.push(tweet);
+                }
+            }
+
+            // Sort by timestamp and return if we have tweets
+            if (uniqueTweets.length > 0) {
+                return uniqueTweets.sort((a, b) => b.timestamp - a.timestamp);
             }
         } catch (error) {
             debugWarn(`Proxy ${proxy} failed:`, error);
@@ -1704,12 +1766,37 @@ async function scrapeNitterTweets() {
     // If all proxies fail, try direct fetch without proxy
     try {
         debugLog('All proxies failed, attempting direct fetch...');
-        const response = await fetch(`${NITTER_BASE}/${TWITTER_USERNAME}`);
-        if (!response.ok) {
-            throw new Error(`Direct fetch failed with status: ${response.status}`);
+        const [mainResponse, replyResponse] = await Promise.all([
+            fetch(`${NITTER_BASE}/${TWITTER_USERNAME}`),
+            fetch(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`)
+        ]);
+
+        if (!mainResponse.ok || !replyResponse.ok) {
+            throw new Error(`Direct fetch failed with status: ${mainResponse.status}/${replyResponse.ok}`);
         }
-        const html = await response.text();
-        return await processTweetsHtml(html);
+
+        const [mainHtml, replyHtml] = await Promise.all([
+            mainResponse.text(),
+            replyResponse.text()
+        ]);
+
+        const mainTweets = await processTweetsHtml(mainHtml);
+        const replyTweets = await processTweetsHtml(replyHtml);
+
+        // Combine and deduplicate tweets
+        const allTweets = [...mainTweets, ...replyTweets];
+        const seenIds = new Set();
+        const uniqueTweets = [];
+
+        for (const tweet of allTweets) {
+            if (!seenIds.has(tweet.id)) {
+                seenIds.add(tweet.id);
+                uniqueTweets.push(tweet);
+            }
+        }
+
+        return uniqueTweets.sort((a, b) => b.timestamp - a.timestamp);
+
     } catch (error) {
         debugWarn('Direct fetch failed:', error);
         throw new Error('NITTER_UNAVAILABLE');
@@ -2612,9 +2699,9 @@ function initializeAudio() {
         bgMusic.volume = 0.25;
         bgMusic.muted = isMuted; // Ensure muted state is applied
         
-        if (!isMuted) {
-            bgMusic.play().catch(error => debugWarn("Audio autoplay failed:", error));
-        }
+        // Always start playing, but respect muted state
+        bgMusic.play().catch(error => debugWarn("Audio autoplay failed:", error));
+        
         document.removeEventListener('click', initAudio);
         debugLog('Audio initialized with muted state:', isMuted);
     };
@@ -2626,9 +2713,14 @@ function initializeAudio() {
         isMuted = !isMuted;
         debugLog('Mute button clicked, new state:', isMuted);
         
-        // Apply muted state
+        // Apply muted state and ensure playback
         bgMusic.muted = isMuted;
         soundWaves.style.display = isMuted ? 'none' : 'block';
+        
+        // If unmuting, ensure audio is playing
+        if (!isMuted) {
+            bgMusic.play().catch(error => debugWarn("Audio play failed:", error));
+        }
         
         // Save preferences
         try {
@@ -2685,3 +2777,107 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();  // Your existing initialization function
     initializeCreditsPopup();
 });
+
+// Add this helper function near the other date functions
+function getLatestTime(video) {
+    // Try all possible date fields
+    const dates = [
+        video.published_at,
+        video.available_at,
+        video.start_scheduled,
+        video.start_actual,
+        // Also try nested fields
+        video.raw?.published_at,
+        video.raw?.available_at,
+        video.raw?.start_scheduled,
+        video.raw?.start_actual
+    ].filter(Boolean); // Remove null/undefined values
+
+    if (dates.length === 0) {
+        debugWarn('No valid date found for video:', video.title);
+        return new Date(0); // Return oldest possible date if no valid date found
+    }
+
+    // Convert all dates to Date objects
+    const dateTimes = dates.map(d => new Date(d));
+    
+    // Return the most recent date
+    return new Date(Math.max(...dateTimes.map(d => d.getTime())));
+}
+
+// Update the tweet processing code to better handle retweets
+function generateTweetHTML(tweet) {
+    const tweetHeader = tweet.isRetweet ? 
+        `<span class="text-yellow-200 text-sm">🔄 Retweeted from @${tweet.retweetedFrom?.replace(/^@/, '') || tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
+        tweet.isReply ?
+        `<span class="text-yellow-200 text-sm">↩️ Replying to @${tweet.replyTo?.replace(/^@/, '') || 'unknown'}</span>` :
+        tweet.isSpace ?
+        `<span class="text-yellow-200 text-sm">🎙️ Twitter Space</span>` :
+        tweet.isQuote ?
+        `<span class="text-yellow-200 text-sm">💬 Quoted @${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
+        `<span class="text-yellow-200 text-sm">@${tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>`;
+
+    return `
+        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+            <div class="flex items-center mb-2">
+                ${tweetHeader}
+            </div>
+            <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
+            
+            ${tweet.isQuote ? `
+                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
+                    <p class="text-sm text-yellow-200 mb-1">${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</p>
+                    <a href="https://x.com/${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}/status/${tweet.quotedTweet?.id || tweet.quotedTweetId || tweet.id}" 
+                       target="_blank" 
+                       class="text-sm text-yellow-300 hover:text-yellow-400">
+                        View quoted tweet
+                    </a>
+                </div>
+            ` : ''}
+
+            ${tweet.spaceInfo ? `
+                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
+                    <p class="text-sm font-semibold text-yellow-300 mb-2">🎙️ Twitter Space</p>
+                    <a href="${tweet.spaceInfo.url}" 
+                       target="_blank" 
+                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
+                        Join Space
+                    </a>
+                </div>
+            ` : ''}
+
+            ${tweet.media.length > 0 ? `
+                <div class="mb-3 ${tweet.media.length > 1 ? 'grid grid-cols-2 gap-2' : ''}">
+                    ${tweet.media.map(item => {
+                        if (item.type === 'video') {
+                            return `
+                                <video autoplay loop muted playsinline 
+                                       class="rounded-lg w-full object-contain"
+                                       style="max-height: 400px;">
+                                    <source src="${item.url}" type="video/mp4">
+                                </video>
+                            `;
+                        } else {
+                            return `
+                                <img src="${item.url}" 
+                                     alt="Tweet media" 
+                                     class="rounded-lg w-full object-contain"
+                                     style="max-height: 400px;"
+                                     loading="lazy">
+                            `;
+                        }
+                    }).join('')}
+                </div>
+            ` : ''}
+            
+            <div class="space-y-1 mb-4">
+                <p class="text-xs text-yellow-200">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
+            </div>
+            <a href="https://x.com/${tweet.originalAuthor ? tweet.originalAuthor.replace('@', '') : TWITTER_USERNAME}/status/${tweet.id}" 
+               target="_blank" 
+               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                View Tweet
+            </a>
+        </div>
+    `;
+}
