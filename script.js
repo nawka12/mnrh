@@ -918,7 +918,7 @@ async function checkLiveStatus() {
                 video.status !== 'upcoming' &&
                 video.raw?.status !== 'upcoming'  // Added check for raw status
             )
-            .slice(0, 5);
+            .slice(0, 6); // Changed from 5 to 6
 
         // Add similar filter for collabs
         const filteredCollabVideos = collabVideos
@@ -927,7 +927,7 @@ async function checkLiveStatus() {
                 video.status !== 'upcoming' &&
                 video.raw?.status !== 'upcoming'  // Added check for raw status
             )
-            .slice(0, 5); // Still take only 5 videos after filtering
+            .slice(0, 6); // Changed from 5 to 6
 
         // Get the latest activity time from videos, collabs, and tweets
         let latestActivity = null;
@@ -1314,7 +1314,7 @@ async function checkLiveStatus() {
                     video.status !== 'upcoming' &&
                     video.raw?.status !== 'upcoming'  // Added check for raw status
                 )
-                .slice(0, 5); // Take only 5 videos after filtering
+                .slice(0, 6); // Changed from 5 to 6
 
             if (filteredClipVideos.length > 0) {
                 html += `
@@ -2007,7 +2007,7 @@ async function getTweets() {
         // Sort by timestamp and take the most recent 5
         const sortedTweets = uniqueTweets
             .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 5);
+            .slice(0, 6); // Changed from 5 to 6
 
         debugLog('Final combined tweets:', sortedTweets.map(t => ({
             id: t.id,
@@ -2225,7 +2225,7 @@ async function getRSSTweets() {
             // After the loop, sort and slice
             return tweets
                 .sort((a, b) => b.timestamp - a.timestamp)
-                .slice(0, 5); // Take the 15 most recent tweets
+                .slice(0, 6); // Changed from 5 to 6
 
         } catch (error) {
             console.warn(`Proxy ${proxy} failed:`, error);
@@ -2405,7 +2405,7 @@ async function getRSSTweets() {
         // After the loop, sort and slice
         return tweets
             .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 5); // Take the 15 most recent tweets
+            .slice(0, 6); // Changed from 5 to 6
 
     } catch (error) {
         debugWarn('Direct RSS fetch failed:', error);
