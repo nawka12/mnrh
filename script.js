@@ -1525,14 +1525,13 @@ async function checkLiveStatus() {
 
 async function scrapeNitterTweets() {
     debugLog('Scraping tweets from Nitter frontend...');
-    
-    const NITTER_BASE = 'https://nitter.privacydev.net';
+
+    // Only include a working proxy:
     const corsProxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://cors-anywhere.herokuapp.com/',
         'https://api.codetabs.com/v1/proxy?quest='
     ];
+
+    const NITTER_BASE = 'https://nitter.privacydev.net';
 
     // Helper function to parse the date string and convert from UTC to local time
     function parseTwitterDate(dateStr) {
@@ -2043,10 +2042,8 @@ async function getTweets() {
 
 // Add new helper function to get RSS tweets
 async function getRSSTweets() {
+    // Only include a working proxy:
     const corsProxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://cors-anywhere.herokuapp.com/',
         'https://api.codetabs.com/v1/proxy?quest='
     ];
 
