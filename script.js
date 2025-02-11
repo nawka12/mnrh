@@ -2878,3 +2878,98 @@ function generateTweetHTML(tweet) {
         </div>
     `;
 }
+
+function showSpecialPopup() {
+  const now = new Date();
+  const todayKey = now.toLocaleDateString();
+  
+  // Check local storage dismissal flag for today's date
+  if (localStorage.getItem('specialPopupDismissed') === todayKey) {
+    return;
+  }
+  
+  // Check if date is Feb 14, 15, or 16 (months are 0-indexed, so February is month 1)
+  if (now.getMonth() === 1 && (now.getDate() >= 14 && now.getDate() <= 16)) {
+    // Create a full-screen overlay using Tailwind utility classes
+    const overlay = document.createElement('div');
+    overlay.id = 'specialPopupOverlay';
+    overlay.className =
+      'fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50';
+
+    // Create the popup container with significantly increased width
+    const popup = document.createElement('div');
+    popup.id = 'specialPopup';
+    popup.className =
+      'card glass-effect rounded-xl p-8 text-center mx-4'; // Increased padding
+    // Force a much wider width of 1200px
+    popup.style.width = "1200px";
+    popup.style.maxWidth = "95vw"; // Increased from 90vw to allow more width on mobile
+
+    // Customize message based on the date
+    let message = '';
+    if (now.getDate() === 14) {
+      message = "Tomorrow is Moona Hoshinova's birthday! 🎉";
+    } else if (now.getDate() === 15) {
+      message = "Happy birthday to my dearest Oshi, Moona Hoshinova! 🎂";
+    } else if (now.getDate() === 16) {
+      message = "Hope you had a wonderful birthday celebration, Moona! 🎊";
+    }
+
+    // Make the content larger too
+    const content = document.createElement('p');
+    content.className = 'text-yellow-300 text-4xl font-bold mb-4'; // Increased text size
+    content.innerHTML = `
+      ${message}<br>
+      <span class="text-2xl text-white">Wishing you a magical celebration filled with joy 🎉💖</span>
+    `;
+
+    // Create a container for the "Don't show me this again today" checkbox
+    const checkboxContainer = document.createElement('div');
+    checkboxContainer.className = 'flex items-center justify-center mb-4';
+
+    // Create the checkbox input element
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'dontShowAgain';
+    checkbox.className = 'mr-2';
+
+    // Create the label for the checkbox and update its text
+    const checkboxLabel = document.createElement('label');
+    checkboxLabel.htmlFor = 'dontShowAgain';
+    checkboxLabel.className = 'text-yellow-300 text-sm';
+    checkboxLabel.textContent = "Don't show me this again today";
+
+    // Append the checkbox and label into the container
+    checkboxContainer.appendChild(checkbox);
+    checkboxContainer.appendChild(checkboxLabel);
+
+    // Create a close button for the popup with themed styling
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+    closeButton.className =
+      'mt-4 inline-block bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl transition-colors duration-200';
+    closeButton.addEventListener('click', function () {
+      // If the checkbox is checked, store the dismissal flag with today's date
+      if (checkbox.checked) {
+        localStorage.setItem('specialPopupDismissed', todayKey);
+      }
+      overlay.remove();
+    });
+
+    // Append the content, checkbox container, and close button to the popup container
+    popup.appendChild(content);
+    popup.appendChild(checkboxContainer);
+    popup.appendChild(closeButton);
+
+    // Append the popup container to the overlay
+    overlay.appendChild(popup);
+
+    // Append the overlay to the document body to display the popup
+    document.body.appendChild(overlay);
+  }
+}
+
+// When the DOM is fully loaded, check the date and show the popup if needed
+document.addEventListener('DOMContentLoaded', function () {
+  showSpecialPopup();
+});
