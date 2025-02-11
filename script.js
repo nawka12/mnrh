@@ -327,7 +327,7 @@ function updateLayoutForViewport() {
 }
 
 // Add this near the top with other constants
-const VERBOSE = true;
+const VERBOSE = false;
 
 // Add this debug logger function
 const debugLog = (...args) => {
