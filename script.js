@@ -115,7 +115,7 @@ const CAREER_TIMELINE = [
     },
     {
         date: "2023-04-01",
-        event: "Debuted child version 2D model"
+        event: "Debuted child version 2D model, named 'Moonie'"
     },
     {
         date: "2023-04-11",
@@ -147,7 +147,7 @@ const CAREER_TIMELINE = [
     },
     {
         date: "2024-08-11",
-        event: "Debuted 3D chibi model in holo no graffiti"
+        event: "Debuted 3D Moonie model in holo no graffiti"
     },
     {
         date: "2024-08-17",
@@ -160,8 +160,13 @@ const CAREER_TIMELINE = [
     {
         date: "2024-12-09",
         event: "Released eighth original song 'Nightmare'"
+    },
+    {
+        date: "2025-02-15",
+        event: "1st 3D birthday live 'Eclipse Breaker,' released '100%' ft. Nerissa Ravencroft, and first album 'PANDORA' with 10 songs, including three new tracks: 'Lasting Freedom,' 'Charade,' and 'Distortion.'"
     }
 ];
+
 
 // Add DOM caching at the top after constants
 const domRefs = {
