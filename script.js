@@ -332,7 +332,7 @@ function updateLayoutForViewport() {
 }
 
 // Add this near the top with other constants
-const VERBOSE = false;
+const VERBOSE = true;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -757,6 +757,7 @@ async function checkLiveStatus() {
                         .replace(/\(.*?\)/g, '') // Remove remaining text in parentheses
                         .replace(/（.*?）/g, '') // Remove remaining Japanese parentheses
                         .replace(/feat\.|ft\./gi, '') // Remove featuring markers
+                        .replace(/\s+feat(?:\.|ur(?:ing)?)?\s+.*$/gi, '') // Remove featuring with no (.)
                         .replace(/moona\s+hoshinova\s*[-–]\s*/gi, '') // Remove "Moona Hoshinova -"
                         .replace(/\s*[-–]\s*moona\s+hoshinova/gi, '') // Remove "- Moona Hoshinova"
                         .replace(/moona\s+hoshinova/gi, '') // Remove just "Moona Hoshinova"
