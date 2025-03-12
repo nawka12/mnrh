@@ -332,7 +332,7 @@ function updateLayoutForViewport() {
 }
 
 // Add this near the top with other constants
-const VERBOSE = false;
+const VERBOSE = true;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -1537,7 +1537,7 @@ async function scrapeNitterTweets() {
         'https://api.codetabs.com/v1/proxy?quest='
     ];
 
-    const NITTER_BASE = 'https://nitter.privacydev.net';
+    const NITTER_BASE = 'https://nitter.space';
 
     // Helper function to parse the date string and convert from UTC to local time
     function parseTwitterDate(dateStr) {
@@ -2058,8 +2058,8 @@ async function getRSSTweets() {
         try {
             // Fetch both RSS feeds
             const [mainResponse, repliesResponse] = await Promise.all([
-                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`)),
-                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`))
+                fetch(proxy + encodeURIComponent(`https://nitter.space/${TWITTER_USERNAME}/rss`)),
+                fetch(proxy + encodeURIComponent(`https://nitter.space/${TWITTER_USERNAME}/with_replies/rss`))
             ]);
 
             if (!mainResponse.ok || !repliesResponse.ok) {
@@ -2240,8 +2240,8 @@ async function getRSSTweets() {
     try {
         debugLog('All proxies failed, attempting direct RSS fetch...');
         const [mainResponse, repliesResponse] = await Promise.all([
-            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`),
-            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`)
+            fetch(`https://nitter.space/${TWITTER_USERNAME}/rss`),
+            fetch(`https://nitter.space/${TWITTER_USERNAME}/with_replies/rss`)
         ]);
 
         if (!mainResponse.ok || !repliesResponse.ok) {
