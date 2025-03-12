@@ -16,6 +16,9 @@ const ORIGINAL_SONGS_CACHE_KEY = 'originalSongs';
 // Add this constant near the other cache keys
 const COVER_SONGS_CACHE_KEY = 'coverSongs';
 
+// Add this constant for Moona merchandise
+const MOONA_MERCH_CACHE_KEY = 'moonaMerch';
+
 // Add this constant for preferences
 const PREFERENCES_KEY = 'moonaPreferences'; 
 
@@ -332,7 +335,7 @@ function updateLayoutForViewport() {
 }
 
 // Add this near the top with other constants
-const VERBOSE = false;
+const VERBOSE = true;
 
 // Add this debug logger function
 const debugLog = (...args) => {
@@ -390,108 +393,48 @@ const cache = {
             const item = localStorage.getItem(key);
             if (!item) return null;
 
-            const { value, timestamp } = JSON.parse(item);
-            
-            // Add additional staleness checks
-            if (!timestamp || 
-                Date.now() - timestamp > CACHE_DURATION || 
-                !pageVisible || 
-                Date.now() - lastVisibilityChange > CACHE_DURATION) {
-                debugLog(`Cache invalidated for ${key} due to staleness or visibility`);
+            try {
+                const parsed = JSON.parse(item);
+                if (parsed && parsed.value) {
+                    const { value, timestamp } = parsed;
+                    
+                    // Basic staleness check based on timestamp
+                    if (timestamp && Date.now() - timestamp <= CACHE_DURATION) {
+                        return value;
+                    } else {
+                        debugLog(`Cache expired for ${key}`);
+                        localStorage.removeItem(key);
+                        return null;
+                    }
+                }
+                return null;
+            } catch (parseError) {
+                debugError(`Error parsing cache for ${key}:`, parseError);
                 localStorage.removeItem(key);
                 return null;
             }
-
-            // Convert date strings back to Date objects for Holodex API responses
-            if (Array.isArray(value)) {
-                return value.map(item => {
-                    // If it's a video object
-                    if (item.videoId || item.raw?.id) {
-                        // Get all possible date fields
-                        const dates = {
-                            published_at: item.raw?.published_at,
-                            available_at: item.raw?.available_at,
-                            start_scheduled: item.raw?.start_scheduled,
-                            start_actual: item.raw?.start_actual
-                        };
-
-                        // Convert all date strings to Date objects
-                        const convertedDates = Object.entries(dates).reduce((acc, [key, value]) => {
-                            if (value) {
-                                try {
-                                    acc[key] = new Date(value);
-                                    // Validate the date
-                                    if (isNaN(acc[key].getTime())) {
-                                        debugWarn(`Invalid date for ${key}:`, value);
-                                        acc[key] = null;
-                                    }
-                                } catch (error) {
-                                    debugWarn(`Error converting date for ${key}:`, error);
-                                    acc[key] = null;
-                                }
-                            } else {
-                                acc[key] = null;
-                            }
-                            return acc;
-                        }, {});
-
-                        // For upcoming streams, use start_scheduled as the main reference
-                        if (item.status === 'upcoming' && convertedDates.start_scheduled) {
-                            return {
-                                ...item,
-                                videoId: item.videoId || item.raw?.id,
-                                title: item.title || item.raw?.title,
-                                scheduledStart: convertedDates.start_scheduled,
-                                status: 'upcoming',
-                                raw: item.raw
-                            };
-                        }
-
-                        // For regular videos, compare published_at and available_at
-                        const publishedAt = convertedDates.published_at;
-                        const availableAt = convertedDates.available_at;
-                        
-                        // Get the latest time between published_at and available_at
-                        const latestTime = publishedAt && availableAt ? 
-                            (availableAt > publishedAt ? availableAt : publishedAt) : 
-                            (publishedAt || availableAt);
-
-                        debugLog('Processing video:', {
-                            videoId: item.videoId || item.raw?.id,
-                            status: item.status,
-                            dates: convertedDates,
-                            latestTime
-                        });
-
-                        return {
-                            ...item,
-                            videoId: item.videoId || item.raw?.id,
-                            title: item.title || item.raw?.title,
-                            publishedAt: latestTime,
-                            status: item.status || item.raw?.status,
-                            raw: item.raw
-                        };
-                    }
-                    return item;
-                });
-            }
-            return value;
-        } catch (error) {
-            debugWarn('Cache read error:', error);
-            localStorage.removeItem(key); // Clear potentially corrupted cache
+        } catch (e) {
+            debugWarn('Cache read error:', e);
             return null;
         }
     },
-    set: (key, value) => {
+    set: (key, data) => {
         try {
-            const item = {
-                value,
-                timestamp: Date.now(),
-                fetchTime: Date.now()
-            };
-            localStorage.setItem(key, JSON.stringify(item));
-        } catch (error) {
-            debugWarn('Cache write error:', error);
+            localStorage.setItem(key, JSON.stringify({
+                value: data,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            debugWarn('Cache write error:', e);
+            try {
+                localStorage.clear();
+                localStorage.setItem(key, JSON.stringify({
+                    value: data,
+                    timestamp: Date.now()
+                }));
+            } catch (e2) {
+                debugError('Cache write failed after clear:', e2);
+            }
         }
     }
 };
@@ -517,43 +460,187 @@ function updateTimeCounter(latestActivity) {
 }
 
 function updateCacheStatus() {
-    const cacheStatus = {};
-    let latestFetchTime = 0;
-
-    // Check each cache item
-    ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY, ORIGINAL_SONGS_CACHE_KEY, COVER_SONGS_CACHE_KEY].forEach(key => {
+    const lastUpdateDiv = document.getElementById('lastUpdate');
+    if (!lastUpdateDiv) return;
+    
+    // Get cache times for all types of data
+    const cacheTypes = [
+        { key: 'liveVideos', label: 'Live videos' },
+        { key: 'recentVideos', label: 'Recent videos' },
+        { key: 'tweets', label: 'Tweets' },
+        { key: CLIPS_CACHE_KEY, label: 'Clips' },
+        { key: COLLABS_CACHE_KEY, label: 'Collabs' },
+        { key: ORIGINAL_SONGS_CACHE_KEY, label: 'Original songs' },
+        { key: COVER_SONGS_CACHE_KEY, label: 'Cover songs' },
+        { key: MOONA_MERCH_CACHE_KEY, label: 'Merchandise' }
+    ];
+    
+    const cacheInfo = cacheTypes.map(type => {
+        const cachedData = localStorage.getItem(type.key);
+        if (!cachedData) return { type: type.label, time: null };
+        
         try {
-            const item = localStorage.getItem(key);
-            if (item) {
-                const { timestamp, fetchTime } = JSON.parse(item);
-                cacheStatus[key] = Date.now() - timestamp > CACHE_DURATION ? 'Live' : 'Cached';
-                // Track the most recent fetch time
-                if (fetchTime > latestFetchTime) {
-                    latestFetchTime = fetchTime;
+            // Special handling for MOONA_MERCH_CACHE_KEY which has a different structure
+            if (type.key === MOONA_MERCH_CACHE_KEY) {
+                const parsedData = JSON.parse(cachedData);
+                if (parsedData && parsedData.timestamp) {
+                    return { 
+                        type: type.label, 
+                        time: new Date(parsedData.timestamp),
+                        count: parsedData.data ? parsedData.data.length : 0
+                    };
                 }
             } else {
-                cacheStatus[key] = 'Live';
+                const data = JSON.parse(cachedData);
+                if (Array.isArray(data) && data.length > 0) {
+                    // Try to get the latest time from the data
+                    return { 
+                        type: type.label, 
+                        time: new Date(),
+                        count: data.length
+                    };
+                }
             }
-        } catch (error) {
-            cacheStatus[key] = 'Live';
+        } catch (e) {
+            debugError(`Error parsing cache data for ${type.key}:`, e);
         }
+        
+        return { type: type.label, time: null };
     });
-
-    document.getElementById('lastUpdate').innerHTML = `
-        <div class="flex flex-col md:flex-row md:items-center justify-center gap-1 md:gap-2">
-            <span class="text-yellow-100">Last updated: ${latestFetchTime ? new Date(latestFetchTime).toLocaleTimeString() : 'Never'}</span>
-            <span class="text-yellow-200 text-xs">
-                (Live: ${cacheStatus.liveVideos} | 
-                 Videos: ${cacheStatus.recentVideos} | 
-                 Collabs: ${cacheStatus[COLLABS_CACHE_KEY]} |
-                 Clips: ${cacheStatus[CLIPS_CACHE_KEY]} |
-                 Songs: ${cacheStatus[ORIGINAL_SONGS_CACHE_KEY]} |
-                 Covers: ${cacheStatus[COVER_SONGS_CACHE_KEY]} |
-                 Tweets: ${cacheStatus.tweets})
-            </span>
-        </div>
-    `;
+    
+    // Find the most recent cache update
+    const validCacheTimes = cacheInfo
+        .filter(info => info.time !== null)
+        .sort((a, b) => b.time - a.time);
+    
+    if (validCacheTimes.length > 0) {
+        const mostRecent = validCacheTimes[0];
+        const formatter = getFormatter({ hour: 'numeric', minute: 'numeric' });
+        
+        lastUpdateDiv.innerHTML = `
+            <div class="text-center">
+                <p>Last updated: ${formatter.format(mostRecent.time)}</p>
+                <details class="mt-1 text-xs opacity-75">
+                    <summary>Cache status</summary>
+                    <ul class="list-disc list-inside text-left mt-2">
+                        ${cacheInfo.map(info => {
+                            if (!info.time) return `<li>${info.type}: Not cached</li>`;
+                            const timeAgo = Math.round((new Date() - info.time) / 60000);
+                            return `<li>${info.type}: ${timeAgo} min ago (${info.count || 0} items)</li>`;
+                        }).join('')}
+                    </ul>
+                </details>
+            </div>
+        `;
+    } else {
+        lastUpdateDiv.innerHTML = `<p>No cached data available</p>`;
+    }
 }
+
+// Helper function to cache and fetch data
+const getCachedOrFetch = async (key, fetchFn) => {
+    try {
+        debugLog(`Fetching ${key}...`);
+        const cachedData = cache.get(key);
+        
+        if (cachedData) {
+            debugLog(`Found cached data for ${key}:`, {
+                sample: cachedData[0] ? {
+                    videoId: cachedData[0].videoId,
+                    title: cachedData[0].title,
+                    scheduledStart: cachedData[0].scheduledStart,
+                    publishedAt: cachedData[0].publishedAt,
+                    raw: {
+                        published_at: cachedData[0].raw?.published_at,
+                        available_at: cachedData[0].raw?.available_at,
+                        start_scheduled: cachedData[0].raw?.start_scheduled
+                    }
+                } : 'No items'
+            });
+            return cachedData;
+        }
+        
+        if (key.includes('Videos')) {
+            debugLog(`Initializing client for ${key}`);
+            holodexClient = await initializeHolodexClient();
+            if (!holodexClient) {
+                throw new Error('Holodex client not initialized');
+            }
+        }
+        
+        debugLog(`Fetching fresh data for ${key}`);
+        const rawData = await fetchFn();
+
+        // Special handling for tweets error object
+        if (key === 'tweets' && rawData?.error) {
+            cache.set(key, rawData);
+            return rawData;
+        }
+        
+        // Process the fresh data to ensure consistent date handling
+        const freshData = Array.isArray(rawData) ? rawData.map(item => {
+            if (item.status === 'upcoming' && item.raw?.start_scheduled) {
+                return {
+                    ...item,
+                    videoId: item.videoId || item.raw?.id,
+                    title: item.title || item.raw?.title,
+                    scheduledStart: new Date(item.raw.start_scheduled),
+                    status: 'upcoming',
+                    raw: item.raw
+                };
+            }
+            
+            const publishedAt = item.raw?.published_at ? new Date(item.raw.published_at) : null;
+            const availableAt = item.raw?.available_at ? new Date(item.raw.available_at) : null;
+            
+            const latestTime = publishedAt && availableAt ? 
+                (availableAt > publishedAt ? availableAt : publishedAt) : 
+                (publishedAt || availableAt);
+            
+            return {
+                ...item,
+                videoId: item.videoId || item.raw?.id,
+                title: item.title || item.raw?.title,
+                publishedAt: latestTime,
+                status: item.status || item.raw?.status,
+                raw: item.raw
+            };
+        }) : rawData;
+
+        debugLog(`Processed fresh data for ${key}:`, {
+            sample: freshData[0] ? {
+                videoId: freshData[0].videoId,
+                title: freshData[0].title,
+                scheduledStart: freshData[0].scheduledStart,
+                publishedAt: freshData[0].publishedAt,
+                raw: {
+                    published_at: freshData[0].raw?.published_at,
+                    available_at: freshData[0].raw?.available_at,
+                    start_scheduled: freshData[0].raw?.start_scheduled
+                }
+            } : 'No items'
+        });
+        
+        if (!freshData) {
+            throw new Error(`No data returned for ${key}`);
+        }
+        
+        cache.set(key, freshData);
+        return freshData;
+    } catch (error) {
+        debugError(`Error in getCachedOrFetch for ${key}:`, error);
+        document.getElementById('liveStatus').innerHTML = `
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Error loading data: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
+            </div>
+        `;
+        return [];
+    }
+};
 
 async function checkLiveStatus() {
     // Show loading state
@@ -567,127 +654,15 @@ async function checkLiveStatus() {
         const now = new Date();
         lastUpdateTime = now;
 
-        async function getThumbnailUrl(videoId) {
-            try {
-                // Try maxresdefault first
-                const maxRes = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
-                const response = await fetch(maxRes, { method: 'HEAD' });
-                if (response.ok) {
-                    return maxRes;
-                }
-                // If maxresdefault fails, return hqdefault without checking
-                return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-            } catch (error) {
-                // If any error occurs, return hqdefault
-                return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-            }
-        }
-
-        const getCachedOrFetch = async (key, fetchFn) => {
-            try {
-                debugLog(`Fetching ${key}...`);
-                const cachedData = cache.get(key);
-                
-                if (cachedData) {
-                    debugLog(`Found cached data for ${key}:`, {
-                        sample: cachedData[0] ? {
-                            videoId: cachedData[0].videoId,
-                            title: cachedData[0].title,
-                            scheduledStart: cachedData[0].scheduledStart,
-                            publishedAt: cachedData[0].publishedAt,
-                            raw: {
-                                published_at: cachedData[0].raw?.published_at,
-                                available_at: cachedData[0].raw?.available_at,
-                                start_scheduled: cachedData[0].raw?.start_scheduled
-                            }
-                        } : 'No items'
-                    });
-                    return cachedData;
-                }
-                
-                if (key.includes('Videos')) {
-                    debugLog(`Initializing client for ${key}`);
-                    holodexClient = await initializeHolodexClient();
-                    if (!holodexClient) {
-                        throw new Error('Holodex client not initialized');
-                    }
-                }
-                
-                debugLog(`Fetching fresh data for ${key}`);
-                const rawData = await fetchFn();
-
-                // Special handling for tweets error object
-                if (key === 'tweets' && rawData?.error) {
-                    cache.set(key, rawData);
-                    return rawData;
-                }
-                
-                // Process the fresh data to ensure consistent date handling
-                const freshData = Array.isArray(rawData) ? rawData.map(item => {
-                    if (item.status === 'upcoming' && item.raw?.start_scheduled) {
-                        return {
-                            ...item,
-                            videoId: item.videoId || item.raw?.id,
-                            title: item.title || item.raw?.title,
-                            scheduledStart: new Date(item.raw.start_scheduled),
-                            status: 'upcoming',
-                            raw: item.raw
-                        };
-                    }
-                    
-                    const publishedAt = item.raw?.published_at ? new Date(item.raw.published_at) : null;
-                    const availableAt = item.raw?.available_at ? new Date(item.raw.available_at) : null;
-                    
-                    const latestTime = publishedAt && availableAt ? 
-                        (availableAt > publishedAt ? availableAt : publishedAt) : 
-                        (publishedAt || availableAt);
-                    
-                    return {
-                        ...item,
-                        videoId: item.videoId || item.raw?.id,
-                        title: item.title || item.raw?.title,
-                        publishedAt: latestTime,
-                        status: item.status || item.raw?.status,
-                        raw: item.raw
-                    };
-                }) : rawData;
-
-                debugLog(`Processed fresh data for ${key}:`, {
-                    sample: freshData[0] ? {
-                        videoId: freshData[0].videoId,
-                        title: freshData[0].title,
-                        scheduledStart: freshData[0].scheduledStart,
-                        publishedAt: freshData[0].publishedAt,
-                        raw: {
-                            published_at: freshData[0].raw?.published_at,
-                            available_at: freshData[0].raw?.available_at,
-                            start_scheduled: freshData[0].raw?.start_scheduled
-                        }
-                    } : 'No items'
-                });
-                
-                if (!freshData) {
-                    throw new Error(`No data returned for ${key}`);
-                }
-                
-                cache.set(key, freshData);
-                return freshData;
-            } catch (error) {
-                debugError(`Error in getCachedOrFetch for ${key}:`, error);
-                document.getElementById('liveStatus').innerHTML = `
-                    <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
-                        <p class="text-red-400">Error loading data: ${error.message}</p>
-                        <button onclick="window.location.reload()" 
-                                class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
-                            Reload Page
-                        </button>
-                    </div>
-                `;
+        // Replace the direct call to getCachedOrFetch with a wrapped promise that handles timeouts gracefully
+        const merchPromise = getCachedOrFetch(MOONA_MERCH_CACHE_KEY, getMoonaMerch)
+            .catch(error => {
+                debugError('Merchandise fetch failed with timeout or error:', error);
+                // Return empty array on failure
                 return [];
-            }
-        };
-
-        const [liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets] = await Promise.all([
+            });
+        
+        const [liveVideos, recentVideos, collabVideos, clipVideos, originalSongs, coverSongs, tweets, moonaMerch] = await Promise.all([
             getCachedOrFetch('liveVideos', async () => {
                 const client = await initializeHolodexClient();
                 const videos = await client.getLiveVideosByChannelId(MOONA_CHANNEL_ID);
@@ -911,7 +886,8 @@ async function checkLiveStatus() {
 
                 return allCovers;
             }),
-            getCachedOrFetch('tweets', getTweets)
+            getCachedOrFetch('tweets', getTweets),
+            merchPromise
         ]);
 
         // Move updateCacheStatus() here, after data is fetched
@@ -927,13 +903,15 @@ async function checkLiveStatus() {
             .slice(0, 6); // Changed from 5 to 6
 
         // Add similar filter for collabs
-        const filteredCollabVideos = collabVideos
-            .filter(video => 
-                video.status !== 'live' && 
-                video.status !== 'upcoming' &&
-                video.raw?.status !== 'upcoming'  // Added check for raw status
-            )
-            .slice(0, 6); // Changed from 5 to 6
+        const filteredCollabVideos = collabVideos && Array.isArray(collabVideos)
+            ? collabVideos
+                .filter(video => 
+                    video && video.status !== 'live' && 
+                    video.status !== 'upcoming' &&
+                    video.raw?.status !== 'upcoming'  // Added check for raw status
+                )
+                .slice(0, 6)
+            : [];
 
         // Get the latest activity time from videos, collabs, and tweets
         let latestActivity = null;
@@ -956,7 +934,7 @@ async function checkLiveStatus() {
         }
 
         // Check collabs and compare with current latest activity
-        if (filteredCollabVideos.length > 0) {
+        if (filteredCollabVideos && filteredCollabVideos.length > 0) {
             const latestCollab = filteredCollabVideos[0];
             debugLog('Latest collab data:', {
                 title: latestCollab.title,
@@ -976,8 +954,8 @@ async function checkLiveStatus() {
         }
 
         // Check tweets and compare with current latest activity
-        if (tweets.length > 0) {
-            const latestTweet = new Date(tweets[0].timestamp * 1000);
+        if (tweets && tweets.tweets && tweets.tweets.length > 0) {
+            const latestTweet = new Date(tweets.tweets[0].timestamp * 1000);
             if (!latestActivity || latestTweet > latestActivity) {
                 latestActivity = latestTweet;
             }
@@ -1231,11 +1209,18 @@ async function checkLiveStatus() {
             }
 
             // Add tweets section after recent videos
-            if (tweets.length > 0 || tweets.error) {
+            if ((tweets.tweets && tweets.tweets.length > 0) || tweets.error) {
+                // Extract the domain name from the source URL
+                let sourceText = 'Nitter';
+                if (tweets.source) {
+                    const sourceUrl = new URL(tweets.source);
+                    sourceText = sourceUrl.hostname;
+                }
+                
                 html += `
                     <div class="flex flex-col items-center mb-8">
                         <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Tweets</h2>
-                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by Nitter</span>
+                        <span class="text-xs text-yellow-200 italic opacity-75">Powered by ${sourceText}</span>
                     </div>
                 `;
 
@@ -1262,7 +1247,7 @@ async function checkLiveStatus() {
                     html += `
                         <div class="grid-container mb-12">
                             <div class="scroll-container">
-                                ${tweets.map(tweet => generateTweetHTML(tweet)).join('')}
+                                ${tweets.tweets.slice(0, 6).map(tweet => generateTweetHTML(tweet)).join('')}
                             </div>
                         </div>
                     `;
@@ -1270,7 +1255,7 @@ async function checkLiveStatus() {
             }
 
             // Add collabs section before the music playlist section
-            if (filteredCollabVideos.length > 0) {
+            if (filteredCollabVideos && filteredCollabVideos.length > 0) {
                 html += `
                     <div class="flex flex-col items-center mb-8">
                         <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Recent Collaborations</h2>
@@ -1446,6 +1431,97 @@ async function checkLiveStatus() {
                     </div>
                 `;
             }
+            
+            // Add Moona Merch section
+            html += `
+                <div class="flex flex-col items-center mb-8">
+                    <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Moona Merch</h2>
+                    <span class="text-xs text-yellow-200 italic opacity-75">Official hololive Shop</span>
+                </div>
+                
+                <style>
+                    /* Square aspect ratio for merchandise thumbnails */
+                    .merch-thumbnail-container {
+                        position: relative;
+                        width: 100%;
+                        padding-bottom: 100%; /* 1:1 Aspect Ratio */
+                        overflow: hidden;
+                        border-radius: 0.75rem;
+                        margin-bottom: 1rem;
+                    }
+                    
+                    .merch-thumbnail {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                        object-position: center;
+                        aspect-ratio: 1/1;
+                        background-color: rgba(0, 0, 0, 0.1);
+                    }
+                    
+                    @media (min-width: 1024px) {
+                        .merch-thumbnail-container {
+                            max-width: 280px;
+                            max-height: 280px;
+                            margin: 0 auto 1rem auto;
+                        }
+                    }
+                </style>
+            `;
+            
+            if (moonaMerch && moonaMerch.length > 0) {
+                html += `
+                    <div class="grid-container mb-12">
+                        <div class="scroll-container">
+                            ${moonaMerch.map(item => `
+                                <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                    <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${item.title || 'Moona Merchandise'}</h3>
+                                    <div class="thumbnail-container merch-thumbnail-container">
+                                        <a href="${item.itemUrl}" target="_blank" rel="noopener noreferrer">
+                                            <img class="stream-thumbnail merch-thumbnail hover:opacity-80 transition-opacity"
+                                                 src="${item.imageUrl}"
+                                                 onerror="this.onerror=null; this.src='${item.secondaryImageUrl || 'https://via.placeholder.com/480x480?text=Moona+Merch'}';"
+                                                 alt="${item.imageAlt || 'Moona Merchandise'}">
+                                        </a>
+                                    </div>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                            Price: ${item.price || 'See shop for details'}
+                                        </p>
+                                    </div>
+                                    <div class="card-footer mt-auto pt-4 flex justify-between items-center">
+                                        <a href="${item.itemUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-purple-900 font-bold rounded transition-colors">
+                                            <span>View Item</span>
+                                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Show a message if no merchandise was found
+                html += `
+                    <div class="grid-container mb-12">
+                        <div class="glass-effect rounded-2xl p-6 text-center">
+                            <p class="text-yellow-100 mb-4">Unable to load merchandise information at this time.</p>
+                            <a href="https://shop.hololivepro.com/en/collections/moonahoshinova" target="_blank" rel="noopener noreferrer" 
+                               class="inline-flex items-center px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-purple-900 font-bold rounded transition-colors">
+                                <span>Visit Moona's Shop Page</span>
+                                <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                `;
+            }
 
             // Add timeline section
             html += `
@@ -1529,6 +1605,35 @@ async function checkLiveStatus() {
     }
 }
 
+// Helper function to parse the date string and convert from UTC to local time
+function parseTwitterDate(dateStr) {
+    try {
+        // Remove UTC and dot from the string
+        const cleanDateStr = dateStr.replace(' UTC', '').replace(' · ', ' ');
+        
+        // Parse the UTC date
+        const utcDate = new Date(cleanDateStr + ' UTC');
+        
+        // Convert to local timestamp
+        const localTimestamp = utcDate.getTime();
+        
+        // Create new date object in local timezone
+        const localDate = new Date(localTimestamp);
+        
+        debugLog('Date conversion:', {
+            original: dateStr,
+            cleaned: cleanDateStr,
+            utc: utcDate.toISOString(),
+            local: localDate.toLocaleString()
+        });
+        
+        return localDate;
+    } catch (error) {
+        debugWarn('Error parsing date:', dateStr, error);
+        return null;
+    }
+}
+
 async function scrapeNitterTweets() {
     debugLog('Scraping tweets from Nitter frontend...');
 
@@ -1537,36 +1642,11 @@ async function scrapeNitterTweets() {
         'https://api.codetabs.com/v1/proxy?quest='
     ];
 
-    const NITTER_BASE = 'https://nitter.space';
-
-    // Helper function to parse the date string and convert from UTC to local time
-    function parseTwitterDate(dateStr) {
-        try {
-            // Remove UTC and dot from the string
-            const cleanDateStr = dateStr.replace(' UTC', '').replace(' · ', ' ');
-            
-            // Parse the UTC date
-            const utcDate = new Date(cleanDateStr + ' UTC');
-            
-            // Convert to local timestamp
-            const localTimestamp = utcDate.getTime();
-            
-            // Create new date object in local timezone
-            const localDate = new Date(localTimestamp);
-            
-            debugLog('Date conversion:', {
-                original: dateStr,
-                cleaned: cleanDateStr,
-                utc: utcDate.toISOString(),
-                local: localDate.toLocaleString()
-            });
-            
-            return localDate;
-        } catch (error) {
-            debugWarn('Error parsing date:', dateStr, error);
-            return null;
-        }
-    }
+    // Try these Nitter instances in order
+    const NITTER_INSTANCES = [
+        'https://nitter.space',
+        'https://nitter.privacydev.net'
+    ];
 
     // Helper function to scrape tweets from a specific URL
     async function scrapeTweetsFromUrl(url, proxy) {
@@ -1588,6 +1668,10 @@ async function scrapeNitterTweets() {
         debugLog(`Found timeline items for ${url}:`, timelineItems.length);
         
         const tweets = [];
+        
+        // Extract the nitter base URL from the provided URL
+        const urlObject = new URL(url);
+        const nitterBase = `${urlObject.protocol}//${urlObject.hostname}`;
         
         for (const item of timelineItems) {
             try {
@@ -1688,7 +1772,7 @@ async function scrapeNitterTweets() {
                 images.forEach(img => {
                     let url = img.getAttribute('src');
                     if (url && url.startsWith('/')) {
-                        url = NITTER_BASE + url;
+                        url = nitterBase + url;
                     }
                     if (url) {
                         media.push({
@@ -1703,7 +1787,7 @@ async function scrapeNitterTweets() {
                 videos.forEach(source => {
                     let url = source.getAttribute('src');
                     if (url && url.startsWith('/')) {
-                        url = NITTER_BASE + url;
+                        url = nitterBase + url;
                     }
                     if (url) {
                         media.push({
@@ -1737,79 +1821,93 @@ async function scrapeNitterTweets() {
         return tweets;
     }
 
-    // Try with CORS proxies first
-    for (const proxy of corsProxies) {
+    // Try with each Nitter instance
+    for (const NITTER_BASE of NITTER_INSTANCES) {
+        debugLog(`Trying Nitter instance: ${NITTER_BASE}`);
+        
+        // Try with CORS proxies first for this instance
+        for (const proxy of corsProxies) {
+            try {
+                // Fetch from both endpoints
+                const [mainTweets, replyTweets] = await Promise.all([
+                    scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, proxy),
+                    scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`, proxy)
+                ]);
+
+                // Combine and deduplicate tweets
+                const allTweets = [...mainTweets, ...replyTweets];
+                const seenIds = new Set();
+                const uniqueTweets = [];
+
+                for (const tweet of allTweets) {
+                    if (!seenIds.has(tweet.id)) {
+                        seenIds.add(tweet.id);
+                        uniqueTweets.push(tweet);
+                    }
+                }
+
+                // Sort by timestamp and return if we have tweets
+                if (uniqueTweets.length > 0) {
+                    return {
+                        tweets: uniqueTweets.sort((a, b) => b.timestamp - a.timestamp),
+                        source: NITTER_BASE
+                    };
+                }
+            } catch (error) {
+                debugWarn(`Proxy ${proxy} with ${NITTER_BASE} failed:`, error);
+                continue;
+            }
+        }
+
+        // If all proxies fail for this instance, try direct fetch without proxy
         try {
-            // Fetch from both endpoints
-            const [mainTweets, replyTweets] = await Promise.all([
-                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}`, proxy),
-                scrapeTweetsFromUrl(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`, proxy)
+            debugLog(`All proxies failed for ${NITTER_BASE}, attempting direct fetch...`);
+            const [mainResponse, replyResponse] = await Promise.all([
+                fetch(`${NITTER_BASE}/${TWITTER_USERNAME}`),
+                fetch(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`)
             ]);
 
-            // Combine and deduplicate tweets
-            const allTweets = [...mainTweets, ...replyTweets];
-            const seenIds = new Set();
-            const uniqueTweets = [];
+            // If both responses are successful, process them
+            if (mainResponse.ok && replyResponse.ok) {
+                const [mainHtml, replyHtml] = await Promise.all([
+                    mainResponse.text(),
+                    replyResponse.text()
+                ]);
 
-            for (const tweet of allTweets) {
-                if (!seenIds.has(tweet.id)) {
-                    seenIds.add(tweet.id);
-                    uniqueTweets.push(tweet);
+                const mainTweets = await processTweetsHtml(mainHtml, NITTER_BASE);
+                const replyTweets = await processTweetsHtml(replyHtml, NITTER_BASE);
+
+                // Combine and deduplicate tweets
+                const allTweets = [...mainTweets, ...replyTweets];
+                const seenIds = new Set();
+                const uniqueTweets = [];
+
+                for (const tweet of allTweets) {
+                    if (!seenIds.has(tweet.id)) {
+                        seenIds.add(tweet.id);
+                        uniqueTweets.push(tweet);
+                    }
+                }
+
+                // Return tweets if we have any
+                if (uniqueTweets.length > 0) {
+                    return {
+                        tweets: uniqueTweets.sort((a, b) => b.timestamp - a.timestamp),
+                        source: NITTER_BASE
+                    };
                 }
             }
-
-            // Sort by timestamp and return if we have tweets
-            if (uniqueTweets.length > 0) {
-                return uniqueTweets.sort((a, b) => b.timestamp - a.timestamp);
-            }
         } catch (error) {
-            debugWarn(`Proxy ${proxy} failed:`, error);
-            continue;
+            debugWarn(`Direct fetch from ${NITTER_BASE} failed:`, error);
         }
     }
 
-    // If all proxies fail, try direct fetch without proxy
-    try {
-        debugLog('All proxies failed, attempting direct fetch...');
-        const [mainResponse, replyResponse] = await Promise.all([
-            fetch(`${NITTER_BASE}/${TWITTER_USERNAME}`),
-            fetch(`${NITTER_BASE}/${TWITTER_USERNAME}/with_replies`)
-        ]);
-
-        if (!mainResponse.ok || !replyResponse.ok) {
-            throw new Error(`Direct fetch failed with status: ${mainResponse.status}/${replyResponse.ok}`);
-        }
-
-        const [mainHtml, replyHtml] = await Promise.all([
-            mainResponse.text(),
-            replyResponse.text()
-        ]);
-
-        const mainTweets = await processTweetsHtml(mainHtml);
-        const replyTweets = await processTweetsHtml(replyHtml);
-
-        // Combine and deduplicate tweets
-        const allTweets = [...mainTweets, ...replyTweets];
-        const seenIds = new Set();
-        const uniqueTweets = [];
-
-        for (const tweet of allTweets) {
-            if (!seenIds.has(tweet.id)) {
-                seenIds.add(tweet.id);
-                uniqueTweets.push(tweet);
-            }
-        }
-
-        return uniqueTweets.sort((a, b) => b.timestamp - a.timestamp);
-
-    } catch (error) {
-        debugWarn('Direct fetch failed:', error);
-        throw new Error('NITTER_UNAVAILABLE');
-    }
+    // If all instances fail, throw an error
+    throw new Error('NITTER_UNAVAILABLE');
 }
 
 // Add new helper function to process HTML
-async function processTweetsHtml(html) {
+async function processTweetsHtml(html, nitterBase) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
@@ -1918,7 +2016,7 @@ async function processTweetsHtml(html) {
             images.forEach(img => {
                 let url = img.getAttribute('src');
                 if (url && url.startsWith('/')) {
-                    url = NITTER_BASE + url;
+                    url = nitterBase + url;
                 }
                 if (url) {
                     media.push({
@@ -1933,7 +2031,7 @@ async function processTweetsHtml(html) {
             videos.forEach(source => {
                 let url = source.getAttribute('src');
                 if (url && url.startsWith('/')) {
-                    url = NITTER_BASE + url;
+                    url = nitterBase + url;
                 }
                 if (url) {
                     media.push({
@@ -1970,11 +2068,11 @@ async function processTweetsHtml(html) {
 async function getTweets() {
     try {
         // Try to get tweets from both sources
-        const [scrapedTweets, rssTweets] = await Promise.all([
+        const [scrapedResult, rssTweets] = await Promise.all([
             scrapeNitterTweets().catch(error => {
                 if (error.message === 'NITTER_UNAVAILABLE') {
                     debugWarn('Nitter scraping failed:', error);
-                    return [];
+                    return { tweets: [], source: null };
                 }
                 throw error; // Re-throw other errors
             }),
@@ -1984,7 +2082,10 @@ async function getTweets() {
             })
         ]);
         
-        debugLog(`Got ${scrapedTweets.length} scraped tweets and ${rssTweets.length} RSS tweets`);
+        const scrapedTweets = scrapedResult.tweets || [];
+        const nitterSource = scrapedResult.source;
+        
+        debugLog(`Got ${scrapedTweets.length} scraped tweets from ${nitterSource} and ${rssTweets.length} RSS tweets`);
 
         // If both methods return empty arrays, show the error message
         if (scrapedTweets.length === 0 && rssTweets.length === 0) {
@@ -1996,52 +2097,31 @@ async function getTweets() {
 
         // Combine tweets from both sources
         const allTweets = [...scrapedTweets, ...rssTweets];
-
-        // Use a Set to track unique tweet IDs
+        
+        // Deduplicate tweets by ID
         const seenIds = new Set();
         const uniqueTweets = [];
-
-        // Keep only unique tweets, preferring scraped versions
+        
         for (const tweet of allTweets) {
             if (!seenIds.has(tweet.id)) {
                 seenIds.add(tweet.id);
                 uniqueTweets.push(tweet);
             }
         }
-
-        // Sort by timestamp and take the most recent 5
-        const sortedTweets = uniqueTweets
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 6); // Changed from 5 to 6
-
-        debugLog('Final combined tweets:', sortedTweets.map(t => ({
-            id: t.id,
-            timestamp: t.timestamp,
-            text: t.text.substring(0, 50) + '...',
-            isReply: t.isReply,
-            replyTo: t.replyTo,
-            isRetweet: t.isRetweet,
-            isQuote: t.isQuote,
-            quotedFrom: t.quotedFrom,
-            media: t.media?.length || 0,
-            source: t.source
-        })));
-
-        // Only return error if we actually have no tweets
-        if (sortedTweets.length === 0) {
-            return {
-                error: true,
-                message: 'No tweets available at the moment, please try again later.'
-            };
-        }
-
-        return sortedTweets;
-
+        
+        // Sort by timestamp (newest first)
+        const sortedTweets = uniqueTweets.sort((a, b) => b.timestamp - a.timestamp);
+        
+        // Return the sorted tweets with source information
+        return {
+            tweets: sortedTweets,
+            source: nitterSource
+        };
     } catch (error) {
-        debugError('Error getting tweets:', error);
+        debugError('Error fetching tweets:', error);
         return {
             error: true,
-            message: 'Unable to fetch tweets at the moment, please try again later.'
+            message: 'An error occurred while fetching tweets.'
         };
     }
 }
@@ -2058,8 +2138,8 @@ async function getRSSTweets() {
         try {
             // Fetch both RSS feeds
             const [mainResponse, repliesResponse] = await Promise.all([
-                fetch(proxy + encodeURIComponent(`https://nitter.space/${TWITTER_USERNAME}/rss`)),
-                fetch(proxy + encodeURIComponent(`https://nitter.space/${TWITTER_USERNAME}/with_replies/rss`))
+                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`)),
+                fetch(proxy + encodeURIComponent(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`))
             ]);
 
             if (!mainResponse.ok || !repliesResponse.ok) {
@@ -2240,8 +2320,8 @@ async function getRSSTweets() {
     try {
         debugLog('All proxies failed, attempting direct RSS fetch...');
         const [mainResponse, repliesResponse] = await Promise.all([
-            fetch(`https://nitter.space/${TWITTER_USERNAME}/rss`),
-            fetch(`https://nitter.space/${TWITTER_USERNAME}/with_replies/rss`)
+            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/rss`),
+            fetch(`https://nitter.privacydev.net/${TWITTER_USERNAME}/with_replies/rss`)
         ]);
 
         if (!mainResponse.ok || !repliesResponse.ok) {
@@ -2482,7 +2562,6 @@ async function safeCheckLiveStatus(isForceRefresh = false) {
                 </button>
             </div>
         `;
-        document.getElementById('timeCounter').textContent = 'Error loading time';
     }
 }
 
@@ -2641,8 +2720,12 @@ async function initializeApp() {
     } catch (error) {
         debugError('App initialization failed:', error);
         document.getElementById('liveStatus').innerHTML = `
-            <div class="bg-red-50 border-2 border-red-500 rounded-lg p-6">
-                <p class="text-red-600">Failed to initialize application: ${error.message}</p>
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Failed to initialize application: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
             </div>
         `;
     }
@@ -2654,20 +2737,330 @@ window.forceCacheRefresh = async () => {
     try {
         // Clear all cached data
         ['liveVideos', 'recentVideos', 'tweets', COLLABS_CACHE_KEY, CLIPS_CACHE_KEY, 
-         ORIGINAL_SONGS_CACHE_KEY, COVER_SONGS_CACHE_KEY].forEach(key => {
+         ORIGINAL_SONGS_CACHE_KEY, COVER_SONGS_CACHE_KEY, MOONA_MERCH_CACHE_KEY].forEach(key => {
             localStorage.removeItem(key);
         });
 
+        // Reset the Holodex client to ensure a fresh connection
+        holodexClient = await initializeHolodexClient();
+        
         // Force a check with the isForceRefresh flag
         await safeCheckLiveStatus(true);
         
         // Update the cache status display
         updateCacheStatus();
     } catch (error) {
-        debugError('Error during force refresh:', error);
-        throw error; // Re-throw to be handled by the caller
+        debugError('Failed to refresh cache:', error);
+        document.getElementById('liveStatus').innerHTML = `
+            <div class="bg-purple-600 border-2 border-red-500 rounded-lg p-6">
+                <p class="text-red-400">Error refreshing data: ${error.message}</p>
+                <button onclick="window.location.reload()" 
+                        class="mt-4 bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-4 py-2 rounded">
+                    Reload Page
+                </button>
+            </div>
+        `;
     }
 };
+
+// Helper function to fetch with timeout
+async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${timeout}ms`);
+        }
+        throw error;
+    }
+}
+
+// Function to scrape Moona's merchandise from shoptest.html
+async function getMoonaMerch() {
+    // Create a wrapper that adds an overall timeout
+    const OVERALL_TIMEOUT = 3000; // 3 seconds max for the entire operation
+    
+    // Create a promise that rejects after the timeout
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Merchandise fetching timed out')), OVERALL_TIMEOUT);
+    });
+    
+    // The main fetch function stays the same
+    const fetchMerchPromise = async () => {
+        try {
+            debugLog('Fetching Moona merchandise data from Hololive shop...');
+            
+            // Check if we have cached data from localStorage and if it's still fresh (less than 12 hours old)
+            const cachedMerchData = localStorage.getItem(MOONA_MERCH_CACHE_KEY);
+            if (cachedMerchData) {
+                try {
+                    const parsedData = JSON.parse(cachedMerchData);
+                    const cacheTime = parsedData.timestamp || 0;
+                    const currentTime = new Date().getTime();
+                    const cacheAgeHours = (currentTime - cacheTime) / (1000 * 60 * 60);
+                    
+                    // If cache is less than 12 hours old, use it
+                    if (cacheAgeHours < 12 && parsedData.data && parsedData.data.length > 0) {
+                        debugLog(`Using cached merchandise data (${cacheAgeHours.toFixed(2)} hours old)`);
+                        return parsedData.data;
+                    } else {
+                        debugLog('Cache expired or empty, fetching fresh data');
+                    }
+                } catch (cacheError) {
+                    debugError('Error parsing cached merchandise data:', cacheError);
+                }
+            }
+            
+            // Fetch directly from the Hololive shop instead of the local file
+            const shopUrl = 'https://shop.hololivepro.com/en/collections/moonahoshinova';
+            const corsProxyUrl = 'https://api.allorigins.win/raw?url=';
+            const backupCorsProxyUrl = 'https://corsproxy.io/?';
+            
+            let html = '';
+            let response;
+            
+            // Define timeout for merchandise fetch (3 seconds)
+            const MERCH_FETCH_TIMEOUT = 3000; // 3 seconds
+            
+            // Try the first CORS proxy
+            try {
+                debugLog('Trying primary CORS proxy...');
+                response = await fetchWithTimeout(
+                    `${corsProxyUrl}${encodeURIComponent(shopUrl)}`, 
+                    {}, 
+                    MERCH_FETCH_TIMEOUT
+                );
+                
+                if (response.ok) {
+                    html = await response.text();
+                    debugLog('Successfully fetched data with primary CORS proxy');
+                } else {
+                    throw new Error(`Primary proxy failed: ${response.status} ${response.statusText}`);
+                }
+            } catch (primaryProxyError) {
+                debugError('Primary CORS proxy failed:', primaryProxyError);
+                
+                // Try the backup CORS proxy
+                try {
+                    debugLog('Trying backup CORS proxy...');
+                    response = await fetchWithTimeout(
+                        `${backupCorsProxyUrl}${encodeURIComponent(shopUrl)}`, 
+                        {}, 
+                        MERCH_FETCH_TIMEOUT
+                    );
+                    
+                    if (response.ok) {
+                        html = await response.text();
+                        debugLog('Successfully fetched data with backup CORS proxy');
+                    } else {
+                        throw new Error(`Backup proxy failed: ${response.status} ${response.statusText}`);
+                    }
+                } catch (backupProxyError) {
+                    debugError('Backup CORS proxy failed:', backupProxyError);
+                    
+                    // Final fallback: try the local shoptest.html file
+                    debugLog('Trying local shoptest.html as last resort...');
+                    try {
+                        response = await fetchWithTimeout('shoptest.html', {}, MERCH_FETCH_TIMEOUT);
+                        if (response.ok) {
+                            html = await response.text();
+                            debugLog('Using local shoptest.html file as fallback');
+                        } else {
+                            throw new Error('Local file failed to load');
+                        }
+                    } catch (localFileError) {
+                        debugError('All fetch attempts failed:', localFileError);
+                        throw new Error('Could not fetch merchandise data from any source');
+                    }
+                }
+            }
+            
+            // Create a DOM parser to extract the merchandise data
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Find all merchandise items
+            const merchItems = [];
+            const itemElements = doc.querySelectorAll('.Item_inner');
+            
+            itemElements.forEach(item => {
+                try {
+                    // Check if the item is sold out (has thumb_disable class)
+                    const thumbDisable = item.querySelector('.thumb_disable');
+                    if (thumbDisable) {
+                        debugLog('Skipping sold out item (thumb_disable found)');
+                        return; // Skip this item as it's sold out
+                    }
+                    
+                    // Extract item details
+                    const titleElement = item.querySelector('.Item_body');
+                    const imagesContainer = item.querySelector('.Item_images');
+                    const primaryImage = imagesContainer?.querySelector('.primary-image');
+                    const secondaryImage = imagesContainer?.querySelector('.secondary-image');
+                    const priceElement = item.querySelector('.Item_info_price');
+                    
+                    // Get data
+                    const title = titleElement ? titleElement.textContent.trim() : '';
+                    const imageUrl = primaryImage ? primaryImage.getAttribute('src') : '';
+                    const imageAlt = primaryImage ? primaryImage.getAttribute('alt') : '';
+                    const secondaryImageUrl = secondaryImage ? secondaryImage.getAttribute('src') : '';
+                    const price = priceElement ? priceElement.textContent.trim() : '';
+                    const itemUrl = item.getAttribute('href');
+                    
+                    // Add to items array
+                    merchItems.push({
+                        title,
+                        price,
+                        imageUrl: imageUrl.startsWith('//') ? 'https:' + imageUrl : imageUrl,
+                        secondaryImageUrl: secondaryImageUrl && secondaryImageUrl.startsWith('//') ? 'https:' + secondaryImageUrl : secondaryImageUrl,
+                        itemUrl: itemUrl.startsWith('/') ? 'https://shop.hololivepro.com' + itemUrl : itemUrl,
+                        imageAlt
+                    });
+                } catch (itemError) {
+                    debugError('Error processing merchandise item:', itemError);
+                }
+            });
+            
+            debugLog(`Found ${merchItems.length} Moona merchandise items (excluding sold out items)`);
+            
+            // If no items were found, try a fallback approach with a different selector
+            if (merchItems.length === 0) {
+                const productCards = doc.querySelectorAll('.product-card');
+                productCards.forEach(card => {
+                    try {
+                        // Check if the item is sold out (has thumb_disable class)
+                        const thumbDisable = card.querySelector('.thumb_disable');
+                        if (thumbDisable) {
+                            debugLog('Skipping sold out item in fallback (thumb_disable found)');
+                            return; // Skip this item as it's sold out
+                        }
+                        
+                        const titleElement = card.querySelector('.product-card__title');
+                        const imageElement = card.querySelector('.product-card__image img');
+                        const priceElement = card.querySelector('.product-card__price');
+                        const linkElement = card.querySelector('a');
+                        
+                        const title = titleElement ? titleElement.textContent.trim() : '';
+                        const imageUrl = imageElement ? imageElement.getAttribute('src') : '';
+                        const imageAlt = imageElement ? imageElement.getAttribute('alt') : '';
+                        const price = priceElement ? priceElement.textContent.trim() : '';
+                        const itemUrl = linkElement ? linkElement.getAttribute('href') : '';
+                        
+                        merchItems.push({
+                            title,
+                            price,
+                            imageUrl: imageUrl.startsWith('//') ? 'https:' + imageUrl : imageUrl,
+                            secondaryImageUrl: '',
+                            itemUrl: itemUrl.startsWith('/') ? 'https://shop.hololivepro.com' + itemUrl : itemUrl,
+                            imageAlt
+                        });
+                    } catch (cardError) {
+                        debugError('Error processing product card:', cardError);
+                    }
+                });
+                
+                debugLog(`Fallback found ${merchItems.length} Moona merchandise items (excluding sold out items)`);
+            }
+            
+            // If still no items, try a more generic approach
+            if (merchItems.length === 0) {
+                debugLog('Using most generic selector approach as last resort');
+                // Look for any product elements with images
+                const productElements = Array.from(doc.querySelectorAll('a[href*="product"]'));
+                
+                for (const element of productElements) {
+                    try {
+                        // Only include items that might be related to Moona
+                        const href = element.getAttribute('href') || '';
+                        if (!href.includes('moona') && !href.includes('hoshinova') && !href.includes('moonahoshinova')) {
+                            continue;
+                        }
+                        
+                        // Check if the item is sold out (has thumb_disable class)
+                        const thumbDisable = element.querySelector('.thumb_disable');
+                        if (thumbDisable) {
+                            debugLog('Skipping sold out item in generic approach (thumb_disable found)');
+                            continue; // Skip this item as it's sold out
+                        }
+                        
+                        const imgElement = element.querySelector('img');
+                        const titleElement = element.querySelector('h3, .title, .name');
+                        const priceElement = element.querySelector('.price');
+                        
+                        const title = titleElement ? titleElement.textContent.trim() : 'Moona Merch Item';
+                        const imageUrl = imgElement ? imgElement.getAttribute('src') : '';
+                        const imageAlt = imgElement ? imgElement.getAttribute('alt') : '';
+                        const price = priceElement ? priceElement.textContent.trim() : '';
+                        
+                        merchItems.push({
+                            title,
+                            price,
+                            imageUrl: imageUrl.startsWith('//') ? 'https:' + imageUrl : imageUrl,
+                            secondaryImageUrl: '',
+                            itemUrl: href.startsWith('/') ? 'https://shop.hololivepro.com' + href : href,
+                            imageAlt
+                        });
+                    } catch (genericError) {
+                        debugError('Error in generic processing:', genericError);
+                    }
+                }
+                
+                debugLog(`Generic approach found ${merchItems.length} Moona merchandise items (excluding sold out items)`);
+            }
+            
+            // Save the fetched data to localStorage with a timestamp
+            if (merchItems.length > 0) {
+                try {
+                    const cacheData = {
+                        timestamp: new Date().getTime(),
+                        data: merchItems
+                    };
+                    localStorage.setItem(MOONA_MERCH_CACHE_KEY, JSON.stringify(cacheData));
+                    debugLog('Merchandise data cached successfully');
+                } catch (cacheError) {
+                    debugError('Error caching merchandise data:', cacheError);
+                }
+            }
+            
+            return merchItems;
+        } catch (error) {
+            debugError('Error fetching Moona merchandise:', error);
+            return [];
+        }
+    };
+    
+    // Race the fetch promise against the timeout
+    try {
+        return await Promise.race([fetchMerchPromise(), timeoutPromise]);
+    } catch (error) {
+        debugError('Merchandise operation timed out or failed:', error);
+        
+        // Try to return cached merchandise regardless of age as a fallback
+        try {
+            const cachedMerchData = localStorage.getItem(MOONA_MERCH_CACHE_KEY);
+            if (cachedMerchData) {
+                const parsedData = JSON.parse(cachedMerchData);
+                if (parsedData.data && parsedData.data.length > 0) {
+                    debugLog('Using expired cached merchandise data as fallback after timeout');
+                    return parsedData.data;
+                }
+            }
+        } catch (cacheError) {
+            debugError('Error using fallback cache after timeout:', cacheError);
+        }
+        
+        return [];
+    }
+}
 
 // Add at the beginning of the file
 let bgMusic;
