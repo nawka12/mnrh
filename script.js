@@ -2823,14 +2823,14 @@ async function getMoonaMerch() {
             
             // Fetch directly from the Hololive shop instead of the local file
             const shopUrl = 'https://shop.hololivepro.com/en/collections/moonahoshinova';
-            const corsProxyUrl = 'https://api.allorigins.win/raw?url=';
+            const corsProxyUrl = 'https://api.codetabs.com/v1/proxy?quest=';
             const backupCorsProxyUrl = 'https://corsproxy.io/?';
             
             let html = '';
             let response;
             
-            // Define timeout for merchandise fetch (3 seconds)
-            const MERCH_FETCH_TIMEOUT = 3000; // 3 seconds
+            // Define timeout for merchandise fetch (10 seconds)
+            const MERCH_FETCH_TIMEOUT = 10000; // 10 seconds
             
             // Try the first CORS proxy
             try {
@@ -2868,8 +2868,34 @@ async function getMoonaMerch() {
                 } catch (backupProxyError) {
                     debugError('Backup CORS proxy failed:', backupProxyError);
                     
-                    // Remove the shoptest.html fallback and throw error directly
-                    throw new Error('Could not fetch merchandise data from any source');
+                    // Try direct fetch without proxy as a last resort (like in Nitter scrape)
+                    try {
+                        debugLog('All CORS proxies failed, attempting direct fetch...');
+                        
+                        // Try using fetch directly
+                        response = await fetchWithTimeout(
+                            shopUrl,
+                            {
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                    'Accept': 'text/html,application/xhtml+xml,application/xml',
+                                    'Accept-Language': 'en-US,en;q=0.9'
+                                }
+                            },
+                            MERCH_FETCH_TIMEOUT
+                        );
+                        
+                        if (response.ok) {
+                            html = await response.text();
+                            debugLog('Successfully fetched data with direct fetch');
+                        } else {
+                            throw new Error(`Direct fetch failed: ${response.status} ${response.statusText}`);
+                        }
+                    } catch (directFetchError) {
+                        debugError('Direct fetch failed:', directFetchError);
+                        // Now truly give up and throw the error
+                        throw new Error('Could not fetch merchandise data from any source');
+                    }
                 }
             }
             
@@ -3046,6 +3072,137 @@ async function getMoonaMerch() {
                     localStorage.setItem(MOONA_MERCH_CACHE_KEY, JSON.stringify(cacheData));
                     cache.set(MOONA_MERCH_CACHE_KEY, merchItems);
                     debugLog('Merchandise data updated from background fetch successfully');
+                    
+                    // Update the UI with the new merchandise data
+                    debugLog('Updating UI with new merchandise data...');
+                    
+                    // Generate the HTML for the merchandise section
+                    let merchHTML = '';
+                    if (merchItems && merchItems.length > 0) {
+                        merchHTML = `
+                            <div class="grid-container mb-12">
+                                <div class="scroll-container">
+                                    ${merchItems.map(item => `
+                                        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+                                            <h3 class="text-lg md:text-xl font-semibold text-yellow-200 mb-4">${item.title || 'Moona Merchandise'}</h3>
+                                            <div class="thumbnail-container merch-thumbnail-container">
+                                                <a href="${item.itemUrl}" target="_blank" rel="noopener noreferrer">
+                                                    <img class="stream-thumbnail merch-thumbnail hover:opacity-80 transition-opacity"
+                                                         src="${item.imageUrl}"
+                                                         onerror="this.onerror=null; this.src='${item.secondaryImageUrl || 'https://via.placeholder.com/480x480?text=Moona+Merch'}';"
+                                                         alt="${item.imageAlt || 'Moona Merchandise'}">
+                                                </a>
+                                            </div>
+                                            <div class="space-y-2 mb-4">
+                                                <p class="text-sm md:text-base text-yellow-100 opacity-90">
+                                                    Price: ${item.price || 'See shop for details'}
+                                                </p>
+                                            </div>
+                                            <div class="card-footer mt-auto pt-4 flex justify-between items-center">
+                                                <a href="${item.itemUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-purple-900 font-bold rounded transition-colors">
+                                                    <span>View Item</span>
+                                                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                                    </svg>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Show a message if no merchandise was found
+                        merchHTML = `
+                            <div class="grid-container mb-12">
+                                <div class="glass-effect rounded-2xl p-6 text-center">
+                                    <p class="text-yellow-100 mb-4">Unable to load merchandise information at this time.</p>
+                                    <a href="https://shop.hololivepro.com/en/collections/moonahoshinova" target="_blank" rel="noopener noreferrer" 
+                                       class="inline-flex items-center px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-purple-900 font-bold rounded transition-colors">
+                                        <span>Visit Moona's Shop Page</span>
+                                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    // Find the merchandise container and update it
+                    const merchSectionTitle = Array.from(document.querySelectorAll('.section-title')).find(el => el.textContent.includes('Moona Merch'));
+                    if (merchSectionTitle) {
+                        // Get the parent container, then find the grid container that follows it
+                        const sectionContainer = merchSectionTitle.closest('div');
+                        const merchContainer = sectionContainer.nextElementSibling;
+                        
+                        if (merchContainer && merchContainer.classList.contains('grid-container')) {
+                            merchContainer.outerHTML = merchHTML;
+                            debugLog('Merchandise UI updated successfully with new data');
+                        } else {
+                            // If we can't find the grid container, insert the new HTML after the section title container
+                            sectionContainer.insertAdjacentHTML('afterend', merchHTML);
+                            debugLog('Created new merchandise container with fresh data');
+                        }
+                        
+                        // Show a temporary notification that data has been updated
+                        const notification = document.createElement('div');
+                        notification.className = 'fixed bottom-4 right-4 bg-yellow-500 text-purple-900 p-4 rounded-lg shadow-lg z-50';
+                        notification.innerHTML = `
+                            <div class="flex items-center">
+                                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                                <span class="font-bold">Merchandise data updated</span>
+                            </div>
+                        `;
+                        document.body.appendChild(notification);
+                        
+                        // Remove the notification after 3 seconds
+                        setTimeout(() => {
+                            notification.remove();
+                        }, 3000);
+                    } else {
+                        // Entire merchandise section is missing, try to find a good insertion point
+                        debugLog('Merchandise section not found, looking for insertion point');
+                        
+                        // Find the main content container
+                        const mainContent = document.getElementById('liveStatus');
+                        if (mainContent) {
+                            // Create the full merchandise section HTML
+                            const fullMerchSection = `
+                                <div class="flex flex-col items-center mb-8">
+                                    <h2 class="section-title text-2xl md:text-3xl font-bold text-yellow-300">Moona Merch</h2>
+                                    <span class="text-xs text-yellow-200 italic opacity-75">Official hololive Shop</span>
+                                </div>
+                                ${merchHTML}
+                            `;
+                            
+                            // Append to the main content area
+                            mainContent.insertAdjacentHTML('beforeend', fullMerchSection);
+                            debugLog('Created full merchandise section at the end of main content');
+                            
+                            // Show notification
+                            const notification = document.createElement('div');
+                            notification.className = 'fixed bottom-4 right-4 bg-yellow-500 text-purple-900 p-4 rounded-lg shadow-lg z-50';
+                            notification.innerHTML = `
+                                <div class="flex items-center">
+                                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="font-bold">Merchandise data added</span>
+                                </div>
+                            `;
+                            document.body.appendChild(notification);
+                            
+                            // Remove notification after 3 seconds
+                            setTimeout(() => {
+                                notification.remove();
+                            }, 3000);
+                        } else {
+                            debugError('Could not find main content to add merchandise section');
+                        }
+                    }
                 } catch (cacheError) {
                     debugError('Error caching merchandise data from background fetch:', cacheError);
                 }
