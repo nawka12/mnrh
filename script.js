@@ -2787,7 +2787,8 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
 // Function to scrape Moona's merchandise from shoptest.html
 async function getMoonaMerch() {
     // Create a wrapper that adds an overall timeout
-    const OVERALL_TIMEOUT = 3000; // 3 seconds max for the entire operation
+    const OVERALL_TIMEOUT = 3000; // 3 seconds max for the main operation
+    let backgroundFetchInProgress = false;
     
     // Create a promise that rejects after the timeout
     const timeoutPromise = new Promise((_, reject) => {
@@ -2867,20 +2868,8 @@ async function getMoonaMerch() {
                 } catch (backupProxyError) {
                     debugError('Backup CORS proxy failed:', backupProxyError);
                     
-                    // Final fallback: try the local shoptest.html file
-                    debugLog('Trying local shoptest.html as last resort...');
-                    try {
-                        response = await fetchWithTimeout('shoptest.html', {}, MERCH_FETCH_TIMEOUT);
-                        if (response.ok) {
-                            html = await response.text();
-                            debugLog('Using local shoptest.html file as fallback');
-                        } else {
-                            throw new Error('Local file failed to load');
-                        }
-                    } catch (localFileError) {
-                        debugError('All fetch attempts failed:', localFileError);
-                        throw new Error('Could not fetch merchandise data from any source');
-                    }
+                    // Remove the shoptest.html fallback and throw error directly
+                    throw new Error('Could not fetch merchandise data from any source');
                 }
             }
             
@@ -3038,11 +3027,48 @@ async function getMoonaMerch() {
         }
     };
     
+    // Function to perform background fetch
+    const performBackgroundFetch = async () => {
+        try {
+            debugLog('Performing background fetch for merchandise...');
+            backgroundFetchInProgress = true;
+            
+            // Execute the full fetch operation
+            const merchItems = await fetchMerchPromise();
+            
+            // Update the cache with new data if successful
+            if (merchItems && merchItems.length > 0) {
+                try {
+                    const cacheData = {
+                        timestamp: new Date().getTime(),
+                        data: merchItems
+                    };
+                    localStorage.setItem(MOONA_MERCH_CACHE_KEY, JSON.stringify(cacheData));
+                    cache.set(MOONA_MERCH_CACHE_KEY, merchItems);
+                    debugLog('Merchandise data updated from background fetch successfully');
+                } catch (cacheError) {
+                    debugError('Error caching merchandise data from background fetch:', cacheError);
+                }
+            }
+        } catch (error) {
+            debugError('Background merchandise fetch failed:', error);
+        } finally {
+            backgroundFetchInProgress = false;
+        }
+    };
+    
     // Race the fetch promise against the timeout
     try {
         return await Promise.race([fetchMerchPromise(), timeoutPromise]);
     } catch (error) {
         debugError('Merchandise operation timed out or failed:', error);
+        
+        // Start background fetch if it timed out
+        if (error.message === 'Merchandise fetching timed out' && !backgroundFetchInProgress) {
+            debugLog('Starting background fetch for merchandise...');
+            // Don't await this - let it run in background
+            performBackgroundFetch();
+        }
         
         // Try to return cached merchandise regardless of age as a fallback
         try {
@@ -3050,7 +3076,7 @@ async function getMoonaMerch() {
             if (cachedMerchData) {
                 const parsedData = JSON.parse(cachedMerchData);
                 if (parsedData.data && parsedData.data.length > 0) {
-                    debugLog('Using expired cached merchandise data as fallback after timeout');
+                    debugLog('Using cached merchandise data as fallback after timeout');
                     return parsedData.data;
                 }
             }
