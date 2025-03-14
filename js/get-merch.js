@@ -1,7 +1,29 @@
-import { debugLog, debugError, debugWarn, fetchWithTimeout, cache } from '../script.js';
+import { debugLog, debugError, debugWarn, fetchWithTimeout } from '../script.js';
 import { TALENT_MERCH_CACHE_KEY } from './cache-keys.js';
+import { cache } from './cache.js';
 
 export async function getTalentMerch() {
+    // Check if a background fetch is already in progress
+    if (window.backgroundFetchInProgress) {
+        debugLog('Background fetch already in progress, returning cached data if available');
+        try {
+            const cachedMerchData = localStorage.getItem(TALENT_MERCH_CACHE_KEY);
+            if (cachedMerchData) {
+                const parsedData = JSON.parse(cachedMerchData);
+                const cacheTime = parsedData.timestamp || 0;
+                const currentTime = new Date().getTime();
+                const cacheAgeHours = (currentTime - cacheTime) / (1000 * 60 * 60);
+                
+                if (parsedData.data && parsedData.data.length > 0) {
+                    debugLog(`Using cached merchandise data (${cacheAgeHours.toFixed(2)} hours old)`);
+                    return parsedData.data;
+                }
+            }
+        } catch (e) {
+            debugError('Error reading cached data:', e);
+        }
+    }
+
     // Create a wrapper that adds an overall timeout
     const OVERALL_TIMEOUT = 3000; // 3 seconds max for the main operation
     let backgroundFetchInProgress = false;
@@ -426,21 +448,28 @@ export async function getTalentMerch() {
         } catch (error) {
             debugError('Background merchandise fetch failed:', error);
         } finally {
+            // Make sure we reset the flag regardless of success or failure
             backgroundFetchInProgress = false;
         }
     };
     
     // Race the fetch promise against the timeout
     try {
-        return await Promise.race([fetchMerchPromise(), timeoutPromise]);
+        const result = await Promise.race([fetchMerchPromise(), timeoutPromise]);
+        // We got a successful result, no need for background fetch
+        return result;
     } catch (error) {
         debugError('Merchandise operation timed out or failed:', error);
         
-        // Start background fetch if it timed out
-        if (error.message === 'Merchandise fetching timed out' && !backgroundFetchInProgress) {
+        // Start background fetch if it timed out and no background fetch is in progress
+        if (error.message === 'Merchandise fetching timed out' && !backgroundFetchInProgress && !window.backgroundFetchInProgress) {
             debugLog('Starting background fetch for merchandise...');
+            // Set global flag
+            window.backgroundFetchInProgress = true;
             // Don't await this - let it run in background
-            performBackgroundFetch();
+            performBackgroundFetch().finally(() => {
+                window.backgroundFetchInProgress = false;
+            });
         }
         
         // Try to return cached merchandise regardless of age as a fallback
