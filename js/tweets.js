@@ -1,4 +1,4 @@
-import { debugError, debugLog, debugWarn } from '../script.js';
+import { debugError, debugLog, debugWarn, formatDateTime } from '../script.js';
 import { TWITTER_USERNAME } from './constants.js';
 
 export function parseTwitterDate(dateStr) {
@@ -903,4 +903,81 @@ export function formatTweetText(text) {
         // Clean up extra spaces and line breaks
         .replace(/(<br>){3,}/g, '<br><br>')
         .trim();
+}
+
+// Update the tweet processing code to better handle retweets
+export function generateTweetHTML(tweet) {
+    const tweetHeader = tweet.isRetweet ? 
+        `<span class="text-yellow-200 text-sm">🔄 Retweeted from @${tweet.retweetedFrom?.replace(/^@/, '') || tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
+        tweet.isReply ?
+        `<span class="text-yellow-200 text-sm">↩️ Replying to @${tweet.replyTo?.replace(/^@/, '') || 'unknown'}</span>` :
+        tweet.isSpace ?
+        `<span class="text-yellow-200 text-sm">🎙️ Twitter Space</span>` :
+        tweet.isQuote ?
+        `<span class="text-yellow-200 text-sm">💬 Quoted @${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</span>` :
+        `<span class="text-yellow-200 text-sm">@${tweet.originalAuthor?.replace(/^@/, '') || TWITTER_USERNAME}</span>`;
+
+    return `
+        <div class="card glass-effect rounded-2xl p-4 md:p-6 relative">
+            <div class="flex items-center mb-2">
+                ${tweetHeader}
+            </div>
+            <p class="text-sm md:text-base text-yellow-100 mb-3">${formatTweetText(tweet.text)}</p>
+            
+            ${tweet.isQuote ? `
+                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
+                    <p class="text-sm text-yellow-200 mb-1">${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}</p>
+                    <a href="https://x.com/${tweet.quotedFrom?.replace(/^@/, '') || TWITTER_USERNAME}/status/${tweet.quotedTweet?.id || tweet.quotedTweetId || tweet.id}" 
+                       target="_blank" 
+                       class="text-sm text-yellow-300 hover:text-yellow-400">
+                        View quoted tweet
+                    </a>
+                </div>
+            ` : ''}
+
+            ${tweet.spaceInfo ? `
+                <div class="border border-yellow-500 rounded-lg p-3 mb-3 bg-purple-500">
+                    <p class="text-sm font-semibold text-yellow-300 mb-2">🎙️ Twitter Space</p>
+                    <a href="${tweet.spaceInfo.url}" 
+                       target="_blank" 
+                       class="inline-block bg-yellow-500 text-purple-900 px-4 py-2 text-sm rounded-lg hover:bg-yellow-600 transition-colors touch-feedback">
+                        Join Space
+                    </a>
+                </div>
+            ` : ''}
+
+            ${tweet.media.length > 0 ? `
+                <div class="mb-3 ${tweet.media.length > 1 ? 'grid grid-cols-2 gap-2' : ''}">
+                    ${tweet.media.map(item => {
+                        if (item.type === 'video') {
+                            return `
+                                <video autoplay loop muted playsinline 
+                                       class="rounded-lg w-full object-contain"
+                                       style="max-height: 400px;">
+                                    <source src="${item.url}" type="video/mp4">
+                                </video>
+                            `;
+                        } else {
+                            return `
+                                <img src="${item.url}" 
+                                     alt="Tweet media" 
+                                     class="rounded-lg w-full object-contain"
+                                     style="max-height: 400px;"
+                                     loading="lazy">
+                            `;
+                        }
+                    }).join('')}
+                </div>
+            ` : ''}
+            
+            <div class="space-y-1 mb-4">
+                <p class="text-xs text-yellow-200">Posted: ${formatDateTime(new Date(tweet.timestamp * 1000))}</p>
+            </div>
+            <a href="https://x.com/${tweet.originalAuthor ? tweet.originalAuthor.replace('@', '') : TWITTER_USERNAME}/status/${tweet.id}" 
+               target="_blank" 
+               class="inline-block w-full bg-yellow-500 hover:bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-xl text-center transition-colors duration-200">
+                View Tweet
+            </a>
+        </div>
+    `;
 }
